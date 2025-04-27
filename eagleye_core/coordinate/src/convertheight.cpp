@@ -29,6 +29,7 @@
  */
 
 #include "coordinate/coordinate.hpp"
+#include <iostream>
 
 ConvertHeight::ConvertHeight()
 {

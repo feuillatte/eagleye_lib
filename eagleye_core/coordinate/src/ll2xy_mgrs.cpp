@@ -29,7 +29,7 @@
 #include <string>
 #include <map>
 #include <iostream>
-
+#include <sstream>
 
 
 int checkCrossBoader(std::string code_origin, std::string code_current, bool is_x)
@@ -98,7 +98,7 @@ void ll2xy_mgrs(double llh[3], double xyz[3])
     exit(4);
   }
 
-  geographic_msgs::GeoPoint wgs_point;
+  GeoPoint wgs_point;
   wgs_point.latitude = llh[0]*180/M_PI;
   wgs_point.longitude = llh[1]*180/M_PI;
   //wgs_point.latitude = llh[0];
@@ -109,8 +109,8 @@ void ll2xy_mgrs(double llh[3], double xyz[3])
   std::cout << wgs_point.longitude << std::endl;
 
 
-  geodesy::UTMPoint utm_point;
-  geodesy::fromMsg(wgs_point, utm_point);
+  UTMPoint utm_point;
+  fromMsg(wgs_point, utm_point);
 
   std::string easting_letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   std::string northing_letters = "ABCDEFGHJKLMNPQRSTUV";

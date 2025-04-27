@@ -26,11 +26,163 @@
 #ifndef COORDINATE_H
 #define COORDINATE_H
 
-#include <geodesy/utm.h>
-#include "geographic_msgs/GeoPoint.h"
+#include <GeographicLib/Constants.hpp>
 #include <GeographicLib/Geoid.hpp>
 #include <GeographicLib/MGRS.hpp>
 #include <GeographicLib/UTMUPS.hpp>
+
+struct GeoPoint {
+    double latitude{0.0};
+    double longitude{0.0};
+    double altitude{0.0};
+};
+
+struct Quaternion {
+    double w;
+    double x;
+    double y;
+    double z;
+};
+
+struct GeoPose {
+    GeoPoint position{};
+    Quaternion orientation{};
+};
+
+
+class UTMPoint
+{
+ public:
+
+  /** Null constructor. Makes a 2D, invalid point object. */
+  UTMPoint():
+    easting(0.0),
+    northing(0.0),
+    altitude(std::numeric_limits<double>::quiet_NaN()),
+    zone(0),
+    band(' ')
+  {}
+
+  /** Copy constructor. */
+  UTMPoint(const UTMPoint &that):
+    easting(that.easting),
+    northing(that.northing),
+    altitude(that.altitude),
+    zone(that.zone),
+    band(that.band)
+  {}
+
+  UTMPoint(const GeoPoint &pt);
+
+  /** Create a flattened 2-D grid point. */
+  UTMPoint(double _easting, double _northing, uint8_t _zone, char _band):
+    easting(_easting),
+    northing(_northing),
+    altitude(std::numeric_limits<double>::quiet_NaN()),
+    zone(_zone),
+    band(_band)
+  {}
+
+  /** Create a 3-D grid point. */
+  UTMPoint(double _easting, double _northing, double _altitude,
+            uint8_t _zone, char _band):
+    easting(_easting),
+    northing(_northing),
+    altitude(_altitude),
+    zone(_zone),
+    band(_band)
+  {}
+
+  // data members
+  double easting;           ///< easting within grid zone [meters]
+  double northing;          ///< northing within grid zone [meters]
+  double altitude;          ///< altitude above ellipsoid [meters] or NaN
+  uint8_t zone;             ///< UTM longitude zone number
+  char   band;              ///< MGRS latitude band letter
+
+}; // class UTMPoint
+
+/** Universal Transverse Mercator (UTM) pose */
+class UTMPose
+{
+ public:
+
+  /** Null constructor. Makes a 2D, invalid pose object. */
+  UTMPose():
+    position(),
+    orientation()
+  {}
+
+  /** Copy constructor. */
+  UTMPose(const UTMPose &that):
+    position(that.position),
+    orientation(that.orientation)
+  {}
+
+  /** Create from a WGS 84 geodetic pose. */
+  UTMPose(const GeoPose &pose):
+    position(pose.position),
+    orientation(pose.orientation)
+  {}
+
+  /** Create from a UTMPoint and a quaternion. */
+  UTMPose(UTMPoint pt,
+          const Quaternion &q):
+    position(pt),
+    orientation(q)
+  {}
+
+  /** Create from a WGS 84 geodetic point and a quaternion. */
+  UTMPose(const GeoPoint &pt,
+          const Quaternion &q):
+    position(pt),
+    orientation(q)
+  {}
+
+  // data members
+  UTMPoint position;
+  Quaternion orientation;
+
+}; // class UTMPose
+
+static char UTMBand(double Lat, double Lon)
+{
+  char LetterDesignator;
+
+  if     ((84 >= Lat) && (Lat >= 72))  LetterDesignator = 'X';
+  else if ((72 > Lat) && (Lat >= 64))  LetterDesignator = 'W';
+  else if ((64 > Lat) && (Lat >= 56))  LetterDesignator = 'V';
+  else if ((56 > Lat) && (Lat >= 48))  LetterDesignator = 'U';
+  else if ((48 > Lat) && (Lat >= 40))  LetterDesignator = 'T';
+  else if ((40 > Lat) && (Lat >= 32))  LetterDesignator = 'S';
+  else if ((32 > Lat) && (Lat >= 24))  LetterDesignator = 'R';
+  else if ((24 > Lat) && (Lat >= 16))  LetterDesignator = 'Q';
+  else if ((16 > Lat) && (Lat >= 8))   LetterDesignator = 'P';
+  else if (( 8 > Lat) && (Lat >= 0))   LetterDesignator = 'N';
+  else if (( 0 > Lat) && (Lat >= -8))  LetterDesignator = 'M';
+  else if ((-8 > Lat) && (Lat >= -16)) LetterDesignator = 'L';
+  else if((-16 > Lat) && (Lat >= -24)) LetterDesignator = 'K';
+  else if((-24 > Lat) && (Lat >= -32)) LetterDesignator = 'J';
+  else if((-32 > Lat) && (Lat >= -40)) LetterDesignator = 'H';
+  else if((-40 > Lat) && (Lat >= -48)) LetterDesignator = 'G';
+  else if((-48 > Lat) && (Lat >= -56)) LetterDesignator = 'F';
+  else if((-56 > Lat) && (Lat >= -64)) LetterDesignator = 'E';
+  else if((-64 > Lat) && (Lat >= -72)) LetterDesignator = 'D';
+  else if((-72 > Lat) && (Lat >= -80)) LetterDesignator = 'C';
+  // '_' is an error flag, the Latitude is outside the UTM limits
+  else LetterDesignator = ' ';
+
+  return LetterDesignator;
+}
+
+
+const double WGS84_E{std::sqrt(2*GeographicLib::Constants::WGS84_f() - GeographicLib::Constants::WGS84_f() * GeographicLib::Constants::WGS84_f())};
+const double UTM_E2{WGS84_E * WGS84_E};
+
+extern void fromMsg(const GeoPoint &from, UTMPoint &to,
+        const bool& force_zone = false, const char& band = 'A', const uint8_t& zone = 0);
+
+extern bool isValid(const UTMPoint& pt);
 
 class ConvertHeight
 {

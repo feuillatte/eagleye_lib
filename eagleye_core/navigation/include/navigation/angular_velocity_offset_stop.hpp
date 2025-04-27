@@ -27,13 +27,12 @@
 #define ANGULAR_VELOCITY_OFFSET_STOP_HPP
 
 #include <deque>
-
+#include <iostream>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
 #include <yaml-cpp/yaml.h>
 
-#include <eagleye_msgs/AngularVelocityOffset.h>
 
 struct AngularVelocityOffsetStopParameter
 {

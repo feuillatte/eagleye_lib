@@ -33,9 +33,9 @@
 
 #define g 9.80665
 
-void rolling_estimate(sensor_msgs::Imu imu, geometry_msgs::TwistStamped correction_velocity,
-                      eagleye_msgs::YawrateOffset yaw_rate_offset_stop, eagleye_msgs::YawrateOffset yaw_rate_offset,
-                      RollingParameter rolling_parameter, RollingStatus* rolling_status, eagleye_msgs::Rolling* rolling)
+void rolling_estimate(ImuState imu, TwistStamped correction_velocity,
+                      YawRateOffset yaw_rate_offset_stop, YawRateOffset yaw_rate_offset,
+                      RollingParameter rolling_parameter, RollingStatus* rolling_status, Rolling* rolling)
 {
   double acceleration_y;
   double velocity;
@@ -50,16 +50,16 @@ void rolling_estimate(sensor_msgs::Imu imu, geometry_msgs::TwistStamped correcti
   double in_sin;
 
   // Input data setup
-  acceleration_y = imu.linear_acceleration.y;
+  acceleration_y = imu.linear_acceleration_mpss.y;
   velocity = correction_velocity.twist.linear.x;
 
   if (std::abs(velocity) > rolling_parameter.stop_judgement_threshold)
   {
-    yaw_rate = imu.angular_velocity.z + yaw_rate_offset.yaw_rate_offset;
+    yaw_rate = imu.angular_velocity_rps.z + yaw_rate_offset.yaw_rate_offset;
   }
   else
   {
-    yaw_rate = imu.angular_velocity.z + yaw_rate_offset_stop.yaw_rate_offset;
+    yaw_rate = imu.angular_velocity_rps.z + yaw_rate_offset_stop.yaw_rate_offset;
   }
 
   if (!rolling_status->data_status)
@@ -86,7 +86,9 @@ void rolling_estimate(sensor_msgs::Imu imu, geometry_msgs::TwistStamped correcti
   }
 
   // Rolling estimation
-  rolling->header = imu.header;
+  const uint32_t timestamp_s = static_cast<uint32_t>(imu.timestamp_ns / 1e9);
+  rolling->header.stamp.tv_sec = timestamp_s;
+  rolling->header.stamp.tv_nsec = imu.timestamp_ns - timestamp_s * 1e9;
   rolling->header.frame_id = "base_link";
 
   in_sin = (velocity * yaw_rate - filtered_acceleration_y) / g;

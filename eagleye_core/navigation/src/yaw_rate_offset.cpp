@@ -31,11 +31,11 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
-void yaw_rate_offset_estimate(const geometry_msgs::TwistStamped velocity, const eagleye_msgs::YawrateOffset yaw_rate_offset_stop,
-  const eagleye_msgs::Heading heading_interpolate,const sensor_msgs::Imu imu, const YawrateOffsetParameter yaw_rate_offset_parameter,
-  YawrateOffsetStatus* yaw_rate_offset_status, eagleye_msgs::YawrateOffset* yaw_rate_offset)
+void yaw_rate_offset_estimate(const TwistStamped velocity, const YawRateOffset yaw_rate_offset_stop,
+  const Heading heading_interpolate,const ImuState imu, const YawrateOffsetParameter yaw_rate_offset_parameter,
+  YawrateOffsetStatus* yaw_rate_offset_status, YawRateOffset* yaw_rate_offset)
 {
-  double yaw_rate = imu.angular_velocity.z;
+  double yaw_rate = imu.angular_velocity_rps.z;
   std::size_t index_length;
   double estimated_number_cur;
 
@@ -62,7 +62,7 @@ void yaw_rate_offset_estimate(const geometry_msgs::TwistStamped velocity, const 
   }
 
   // data buffer generate
-  yaw_rate_offset_status->time_buffer.push_back(imu.header.stamp.toSec());
+  yaw_rate_offset_status->time_buffer.push_back(imu.timestamp_ns / 1e9);
   yaw_rate_offset_status->yaw_rate_buffer.push_back(yaw_rate);
   yaw_rate_offset_status->heading_angle_buffer.push_back(heading_interpolate.heading_angle);
   yaw_rate_offset_status->correction_velocity_buffer.push_back(velocity.twist.linear.x);

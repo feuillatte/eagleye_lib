@@ -33,8 +33,8 @@
 
 #define knot2mps 0.51477
 
-void velocity_scale_factor_estimate_(const geometry_msgs::TwistStamped velocity, const VelocityScaleFactorParameter velocity_scale_factor_parameter,
-  VelocityScaleFactorStatus* velocity_scale_factor_status, geometry_msgs::TwistStamped* correction_velocity, eagleye_msgs::VelocityScaleFactor* velocity_scale_factor)
+void velocity_scale_factor_estimate_(const TwistStamped velocity, const VelocityScaleFactorParameter velocity_scale_factor_parameter,
+  VelocityScaleFactorStatus* velocity_scale_factor_status, TwistStamped* correction_velocity, VelocityScaleFactor* velocity_scale_factor)
 { 
 
   int i;
@@ -164,9 +164,9 @@ void velocity_scale_factor_estimate_(const geometry_msgs::TwistStamped velocity,
 
 }
 
-void velocity_scale_factor_estimate(const rtklib_msgs::RtklibNav rtklib_nav, const geometry_msgs::TwistStamped velocity,
+/* void velocity_scale_factor_estimate(const rtklib_msgs::RtklibNav rtklib_nav, const TwistStamped velocity,
   const VelocityScaleFactorParameter velocity_scale_factor_parameter, VelocityScaleFactorStatus* velocity_scale_factor_status,
-  geometry_msgs::TwistStamped* correction_velocity, eagleye_msgs::VelocityScaleFactor* velocity_scale_factor)
+  TwistStamped* correction_velocity, VelocityScaleFactor* velocity_scale_factor)
 {
 
     double ecef_vel[3];
@@ -217,26 +217,26 @@ void velocity_scale_factor_estimate(const rtklib_msgs::RtklibNav rtklib_nav, con
   velocity_scale_factor_status->velocity_buffer.push_back(velocity.twist.linear.x);
 
   velocity_scale_factor_estimate_(velocity, velocity_scale_factor_parameter, velocity_scale_factor_status, correction_velocity, velocity_scale_factor);
-}
+} */
 
-void velocity_scale_factor_estimate(const nmea_msgs::Gprmc nmea_rmc, const geometry_msgs::TwistStamped velocity,
+void velocity_scale_factor_estimate(const GNSSPVT nmea_rmc, const TwistStamped velocity,
   const VelocityScaleFactorParameter velocity_scale_factor_parameter, VelocityScaleFactorStatus* velocity_scale_factor_status,
-  geometry_msgs::TwistStamped* correction_velocity, eagleye_msgs::VelocityScaleFactor* velocity_scale_factor)
+  TwistStamped* correction_velocity, VelocityScaleFactor* velocity_scale_factor)
 {
   bool gnss_status;
   double doppler_velocity = 0.0;
 
-  if (velocity_scale_factor_status->rmc_time_last == nmea_rmc.utc_seconds || nmea_rmc.utc_seconds == 0)
+  if (velocity_scale_factor_status->rmc_time_last == nmea_rmc.timestamp_ns || nmea_rmc.timestamp_ns == 0)
   {
     gnss_status = false;
     doppler_velocity = 0;
-    velocity_scale_factor_status->rmc_time_last = nmea_rmc.utc_seconds;
+    velocity_scale_factor_status->rmc_time_last = nmea_rmc.timestamp_ns;
   }
   else
   {
     gnss_status = true;
     doppler_velocity = nmea_rmc.speed * knot2mps;
-    velocity_scale_factor_status->rmc_time_last = nmea_rmc.utc_seconds;
+    velocity_scale_factor_status->rmc_time_last = nmea_rmc.timestamp_ns;
   }
 
   velocity_scale_factor_status->gnss_status_buffer.push_back(gnss_status);

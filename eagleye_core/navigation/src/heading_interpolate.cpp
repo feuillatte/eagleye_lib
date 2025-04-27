@@ -31,10 +31,10 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
-void heading_interpolate_estimate(const sensor_msgs::Imu imu, const geometry_msgs::TwistStamped velocity,
-  const eagleye_msgs::YawrateOffset yaw_rate_offset_stop,const eagleye_msgs::YawrateOffset yaw_rate_offset,const eagleye_msgs::Heading heading,
-  const eagleye_msgs::SlipAngle slip_angle,const HeadingInterpolateParameter heading_interpolate_parameter, HeadingInterpolateStatus* heading_interpolate_status,
-  eagleye_msgs::Heading* heading_interpolate)
+void heading_interpolate_estimate(const ImuState imu, const TwistStamped velocity,
+  const YawRateOffset yaw_rate_offset_stop,const YawRateOffset yaw_rate_offset,const Heading heading,
+  const SlipAngle slip_angle,const HeadingInterpolateParameter heading_interpolate_parameter, HeadingInterpolateStatus* heading_interpolate_status,
+  Heading* heading_interpolate)
 {
   int i;
   int estimate_index = 0;
@@ -47,7 +47,7 @@ void heading_interpolate_estimate(const sensor_msgs::Imu imu, const geometry_msg
 
   double search_buffer_number = heading_interpolate_parameter.sync_search_period * heading_interpolate_parameter.imu_rate;
 
-  yaw_rate = imu.angular_velocity.z;
+  yaw_rate = imu.angular_velocity_rps.z;
 
   if (std::abs(velocity.twist.linear.x) > heading_interpolate_parameter.stop_judgement_threshold)
   {
@@ -67,7 +67,8 @@ void heading_interpolate_estimate(const sensor_msgs::Imu imu, const geometry_msg
     heading_interpolate_status->number_buffer = search_buffer_number;
   }
 
-  if (heading_interpolate_status->heading_stamp_last != heading.header.stamp.toSec() && heading.status.estimate_status)
+  const double imu_time = heading.header.stamp.tv_sec + heading.header.stamp.tv_nsec / 1e9;
+  if (heading_interpolate_status->heading_stamp_last != imu_time && heading.status.estimate_status)
   {
     heading_estimate_status = true;
     heading_interpolate_status->heading_estimate_start_status = true;
@@ -77,14 +78,14 @@ void heading_interpolate_estimate(const sensor_msgs::Imu imu, const geometry_msg
   if(heading_interpolate_status->time_last != 0 && std::abs(velocity.twist.linear.x) >
     heading_interpolate_parameter.stop_judgement_threshold)
   {
-    double dt = imu.header.stamp.toSec() - heading_interpolate_status->time_last;
+    double dt = imu_time - heading_interpolate_status->time_last;
     heading_interpolate_status->provisional_heading_angle += yaw_rate * dt;
     heading_interpolate_status->heading_variance_last += proc_noise*proc_noise;
   }
 
   // data buffer generate
   heading_interpolate_status->provisional_heading_angle_buffer.push_back(heading_interpolate_status->provisional_heading_angle);
-  heading_interpolate_status->imu_stamp_buffer.push_back(imu.header.stamp.toSec());
+  heading_interpolate_status->imu_stamp_buffer.push_back(imu_time);
   imu_stamp_buffer_length = std::distance(heading_interpolate_status->imu_stamp_buffer.begin(), heading_interpolate_status->imu_stamp_buffer.end());
 
   if (imu_stamp_buffer_length > search_buffer_number)
@@ -100,7 +101,7 @@ void heading_interpolate_estimate(const sensor_msgs::Imu imu, const geometry_msg
     {
       for (estimate_index = heading_interpolate_status->number_buffer; estimate_index > 0; estimate_index--)
       {
-        if (heading_interpolate_status->imu_stamp_buffer[estimate_index-1] == heading.header.stamp.toSec())
+        if (heading_interpolate_status->imu_stamp_buffer[estimate_index-1] == imu_time)
         {
           break;
         }
@@ -149,7 +150,7 @@ void heading_interpolate_estimate(const sensor_msgs::Imu imu, const geometry_msg
     heading_interpolate->status.estimate_status = false;
   }
 
-  heading_interpolate_status->time_last = imu.header.stamp.toSec();
-  heading_interpolate_status->heading_stamp_last = heading.header.stamp.toSec();
+  heading_interpolate_status->time_last = imu_time;
+  heading_interpolate_status->heading_stamp_last = imu_time;
 
 }

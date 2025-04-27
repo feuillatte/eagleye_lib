@@ -31,9 +31,9 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
-void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geometry_msgs::Vector3Stamped enu_vel, eagleye_msgs::Position gnss_smooth_pos,
-  eagleye_msgs::Height height, eagleye_msgs::Heading heading,PositionInterpolateParameter position_interpolate_parameter, PositionInterpolateStatus* position_interpolate_status,
-  eagleye_msgs::Position* enu_absolute_pos_interpolate,sensor_msgs::NavSatFix* eagleye_fix)
+void position_interpolate_estimate(Position enu_absolute_pos, Vector3Stamped enu_vel, Position gnss_smooth_pos,
+  Height height, Heading heading,PositionInterpolateParameter position_interpolate_parameter, PositionInterpolateStatus* position_interpolate_status,
+  Position* enu_absolute_pos_interpolate, GNSSPosition* eagleye_fix)
 {
 
   int i;
@@ -61,7 +61,8 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
     position_interpolate_status->number_buffer = search_buffer_number;
   }
 
-  if (position_interpolate_status->position_stamp_last != enu_absolute_pos.header.stamp.toSec() && enu_absolute_pos.status.estimate_status == true)
+  const double enu_absolute_time = enu_absolute_pos.header.stamp.tv_sec+ enu_absolute_pos.header.stamp.tv_nsec / 1e9;
+  if (position_interpolate_status->position_stamp_last != enu_absolute_time && enu_absolute_pos.status.estimate_status == true)
   {
     position_estimate_status = true;
     position_interpolate_status->position_estimate_start_status = true;
@@ -72,22 +73,23 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
     position_estimate_status = false;
   }
 
+   const double enu_vel_time = enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9;
   if(position_interpolate_status->time_last != 0 && std::sqrt((enu_vel.vector.x * enu_vel.vector.x) + (enu_vel.vector.y * enu_vel.vector.y) +
     (enu_vel.vector.z * enu_vel.vector.z)) > position_interpolate_parameter.stop_judgement_threshold)
   {
     position_interpolate_status->provisional_enu_pos_x = enu_absolute_pos_interpolate->enu_pos.x + enu_vel.vector.x *
-      (enu_vel.header.stamp.toSec() - position_interpolate_status->time_last);
+      (enu_vel_time - position_interpolate_status->time_last);
     position_interpolate_status->provisional_enu_pos_y = enu_absolute_pos_interpolate->enu_pos.y + enu_vel.vector.y *
-      (enu_vel.header.stamp.toSec() - position_interpolate_status->time_last);
+      (enu_vel_time - position_interpolate_status->time_last);
     position_interpolate_status->provisional_enu_pos_z = enu_absolute_pos_interpolate->enu_pos.z + enu_vel.vector.z *
-      (enu_vel.header.stamp.toSec() - position_interpolate_status->time_last);
+      (enu_vel_time - position_interpolate_status->time_last);
   }
 
   // data buffer generate
   position_interpolate_status->provisional_enu_pos_x_buffer.push_back(position_interpolate_status->provisional_enu_pos_x);
   position_interpolate_status->provisional_enu_pos_y_buffer.push_back(position_interpolate_status->provisional_enu_pos_y);
   position_interpolate_status->provisional_enu_pos_z_buffer.push_back(position_interpolate_status->provisional_enu_pos_z);
-  position_interpolate_status->imu_stamp_buffer.push_back(enu_vel.header.stamp.toSec());
+  position_interpolate_status->imu_stamp_buffer.push_back(enu_vel_time);
   imu_stamp_buffer_length = std::distance(position_interpolate_status->imu_stamp_buffer.begin(), position_interpolate_status->imu_stamp_buffer.end());
 
   if (imu_stamp_buffer_length > search_buffer_number)
@@ -104,7 +106,7 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
     {
       for (estimate_index = position_interpolate_status->number_buffer; estimate_index > 0; estimate_index--)
       {
-        if (position_interpolate_status->imu_stamp_buffer[estimate_index-1] == enu_absolute_pos.header.stamp.toSec())
+        if (position_interpolate_status->imu_stamp_buffer[estimate_index-1] == enu_absolute_time)
         {
           break;
         }
@@ -194,8 +196,8 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
       jacobian(3,3) = 1;
       jacobian(4,4) = 1;
       jacobian(5,5) = 1;
-      jacobian(0,5) = enu_vel.vector.y*(enu_vel.header.stamp.toSec() - position_interpolate_status->time_last);
-      jacobian(1,5) = -enu_vel.vector.x*(enu_vel.header.stamp.toSec() - position_interpolate_status->time_last);
+      jacobian(0,5) = enu_vel.vector.y*(enu_vel_time - position_interpolate_status->time_last);
+      jacobian(1,5) = -enu_vel.vector.x*(enu_vel_time - position_interpolate_status->time_last);
 
       // MEMO: Jacobean not included
       // position_covariance = position_interpolate_status->position_covariance_last + proc_covariance;
@@ -210,8 +212,8 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
       position_covariance = position_interpolate_status->position_covariance_last;
     }
 
-    eagleye_fix->longitude = llh_pos[1] * 180/M_PI;
-    eagleye_fix->latitude = llh_pos[0] * 180/M_PI;
+    eagleye_fix->lon = llh_pos[1] * 180/M_PI;
+    eagleye_fix->lat = llh_pos[0] * 180/M_PI;
 
     if(height.status.enabled_status == true){
       llh_pos[2] = height.height;
@@ -229,10 +231,9 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
     enu_absolute_pos_interpolate->covariance[4] = position_covariance(1,1); // [m^2]
     enu_absolute_pos_interpolate->covariance[8] = position_covariance(2,2); // [m^2]
 
-    eagleye_fix->altitude = llh_pos[2];
-    eagleye_fix->position_covariance[0] = position_covariance(0,0); // [m^2]
-    eagleye_fix->position_covariance[4] = position_covariance(1,1); // [m^2]
-    eagleye_fix->position_covariance[8] = position_covariance(2,2); // [m^2]
+    eagleye_fix->alt_msl = llh_pos[2];
+    eagleye_fix->surface_stddev_m = position_covariance(0,0); // [m^2]
+    eagleye_fix->alt_stddev_m = position_covariance(2,2); // [m^2]
 
   }
   else
@@ -240,14 +241,13 @@ void position_interpolate_estimate(eagleye_msgs::Position enu_absolute_pos, geom
     enu_absolute_pos_interpolate->enu_pos.x = 0;
     enu_absolute_pos_interpolate->enu_pos.y = 0;
     enu_absolute_pos_interpolate->enu_pos.z = 0;
-    eagleye_fix->longitude = 0;
-    eagleye_fix->latitude = 0;
-    eagleye_fix->altitude = 0;
-    eagleye_fix->position_covariance[0] = 100 * 100; // [m^2]
-    eagleye_fix->position_covariance[4] = 100 * 100; // [m^2]
-    eagleye_fix->position_covariance[8] = 100 * 100; // [m^2]
+    eagleye_fix->lon = 0;
+    eagleye_fix->lat = 0;
+    eagleye_fix->alt_msl = 0;
+    eagleye_fix->surface_stddev_m = 100;
+    eagleye_fix->alt_stddev_m = 100;
   }
 
-  position_interpolate_status->time_last = enu_vel.header.stamp.toSec();
-  position_interpolate_status->position_stamp_last = enu_absolute_pos.header.stamp.toSec();
+  position_interpolate_status->time_last = enu_vel_time;
+  position_interpolate_status->position_stamp_last = enu_absolute_time;
 }

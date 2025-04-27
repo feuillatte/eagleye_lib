@@ -31,8 +31,8 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
-void slip_coefficient_estimate(sensor_msgs::Imu imu,rtklib_msgs::RtklibNav rtklib_nav,geometry_msgs::TwistStamped velocity,
-  eagleye_msgs::YawrateOffset yaw_rate_offset_stop,eagleye_msgs::YawrateOffset yaw_rate_offset_2nd,eagleye_msgs::Heading heading_interpolate_3rd,
+void slip_coefficient_estimate(ImuState imu,rtklib_msgs::RtklibNav rtklib_nav,TwistStamped velocity,
+  YawRateOffset yaw_rate_offset_stop,YawRateOffset yaw_rate_offset_2nd,Heading heading_interpolate_3rd,
   SlipCoefficientParameter slip_coefficient_parameter,SlipCoefficientStatus* slip_coefficient_status,double* estimate_coefficient)
 {
   int i;

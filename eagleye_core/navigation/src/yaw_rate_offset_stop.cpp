@@ -31,9 +31,9 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
-void yaw_rate_offset_stop_estimate(const geometry_msgs::TwistStamped velocity, const sensor_msgs::Imu imu,
+void yaw_rate_offset_stop_estimate(const TwistStamped velocity, const ImuState imu,
   const YawrateOffsetStopParameter yaw_rate_offset_stop_parameter, YawrateOffsetStopStatus* yaw_rate_offset_stop_status,
-  eagleye_msgs::YawrateOffset* yaw_rate_offset_stop)
+  YawRateOffset* yaw_rate_offset_stop)
 {
 
   int i;
@@ -51,12 +51,12 @@ void yaw_rate_offset_stop_estimate(const geometry_msgs::TwistStamped velocity, c
   // data buffer generate
   if (yaw_rate_offset_stop_status->estimate_start_status == false)
   {
-    yaw_rate_offset_stop_status->yaw_rate_buffer.push_back(imu.angular_velocity.z);
+    yaw_rate_offset_stop_status->yaw_rate_buffer.push_back(imu.angular_velocity_rps.z);
   }
-  else if ( std::fabs(std::fabs(yaw_rate_offset_stop_status->yaw_rate_offset_stop_last) - std::fabs(imu.angular_velocity.z)) <
+  else if ( std::fabs(std::fabs(yaw_rate_offset_stop_status->yaw_rate_offset_stop_last) - std::fabs(imu.angular_velocity_rps.z)) <
     yaw_rate_offset_stop_parameter.outlier_threshold && yaw_rate_offset_stop_status->estimate_start_status == true)
   {
-    yaw_rate_offset_stop_status->yaw_rate_buffer.push_back(imu.angular_velocity.z);
+    yaw_rate_offset_stop_status->yaw_rate_buffer.push_back(imu.angular_velocity_rps.z);
   }
 
   yaw_rate_buffer_length = std::distance(yaw_rate_offset_stop_status->yaw_rate_buffer.begin(), yaw_rate_offset_stop_status->yaw_rate_buffer.end());

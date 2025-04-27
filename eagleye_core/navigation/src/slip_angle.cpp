@@ -28,12 +28,12 @@
  * Author MapIV Sekino
  */
 
-#include "coordinate/coordinate.hpp"
-#include "navigation/navigation.hpp"
+#include <coordinate/coordinate.hpp>
+#include <navigation/navigation.hpp>
 
-void slip_angle_estimate(sensor_msgs::Imu imu, geometry_msgs::TwistStamped velocity, eagleye_msgs::StatusStamped velocity_status, 
-  eagleye_msgs::YawrateOffset yaw_rate_offset_stop, eagleye_msgs::YawrateOffset yaw_rate_offset_2nd, SlipangleParameter slip_angle_parameter,
-  eagleye_msgs::SlipAngle* slip_angle)
+void slip_angle_estimate(ImuState imu, TwistStamped velocity, StatusStamped velocity_status,
+  YawRateOffset yaw_rate_offset_stop, YawRateOffset yaw_rate_offset_2nd, SlipangleParameter slip_angle_parameter,
+  SlipAngle* slip_angle)
 {
 
   int i;
@@ -41,7 +41,7 @@ void slip_angle_estimate(sensor_msgs::Imu imu, geometry_msgs::TwistStamped veloc
   double yaw_rate;
   double acceleration_y;
 
-  yaw_rate = imu.angular_velocity.z;
+  yaw_rate = imu.angular_velocity_rps.z;
 
   if (std::abs(velocity.twist.linear.x) > slip_angle_parameter.stop_judgement_threshold)
   {
