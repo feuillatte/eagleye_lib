@@ -1,0 +1,12 @@
+build/
+install/
+log/
+*.o
+*.a
+MODULE.bazel
+MODULE.bazel.lock
+
+bazel-bin
+bazel-out
+bazel-testlogs
+bazel-eagleye_lib

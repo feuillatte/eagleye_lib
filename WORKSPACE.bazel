@@ -1,0 +1,37 @@
+# This file is used by the Bazel build system.
+
+workspace(name = "eagleye_localization")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "rules_foreign_cc",
+    urls = ["https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.5.0.tar.gz"],
+    strip_prefix = "rules_foreign_cc-0.5.0",
+)
+load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
+rules_foreign_cc_dependencies()
+
+http_archive(
+    name = "yaml-cpp",
+    sha256 = "fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16",
+    urls = ["https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz"],
+    strip_prefix = "yaml-cpp-0.8.0",
+#    build_file = "BUILD.bazel",
+)
+
+
+http_archive(
+    name = "geographic",
+    sha256 = "347319e3dc5dd2d58116ff1ecb8c0ae11c9f095c655fe289992b3208bc7a32fc",
+    build_file = "//third_party/com_github_geographiclib_geographiclib:BUILD.external",
+    urls = [ "https://github.com/geographiclib/geographiclib/archive/refs/tags/v2.5.tar.gz" ],
+    strip_prefix = "geographiclib-2.5",
+)
+
+http_archive(
+    name = "eigen",
+    build_file = "//third_party/com_gitlab_libeigen_eigen:BUILD.external",
+    url = "https://gitlab.com/libeigen/eigen/-/archive/3.3.8/eigen-3.3.8.zip",
+    strip_prefix="eigen-3.3.8"
+)

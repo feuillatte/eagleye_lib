@@ -620,19 +620,19 @@ struct RollingStatus
 };
 
 
-extern void velocity_scale_factor_estimate( const TwistStamped, const VelocityScaleFactorParameter, 
+extern void velocity_scale_factor_estimate( const TwistStamped, const VelocityScaleFactorParameter,
   VelocityScaleFactorStatus*, TwistStamped*, VelocityScaleFactor*);
 
-extern void velocity_scale_factor_estimate(const GNSSState, const TwistStamped, const VelocityScaleFactorParameter, 
+extern void velocity_scale_factor_estimate(const GNSSPVT, const TwistStamped, const VelocityScaleFactorParameter,
   VelocityScaleFactorStatus*, TwistStamped*, VelocityScaleFactor*);
 
-extern void distance_estimate(const TwistStamped, 
+extern void distance_estimate(const TwistStamped,
   DistanceStatus*, Distance*);
 
-extern void yaw_rate_offset_stop_estimate(const TwistStamped, const ImuState, const YawrateOffsetStopParameter, 
+extern void yaw_rate_offset_stop_estimate(const TwistStamped, const ImuState, const YawrateOffsetStopParameter,
   YawrateOffsetStopStatus*, YawRateOffset*);
 
-extern void yaw_rate_offset_estimate(const TwistStamped, const YawRateOffset,const Heading, const ImuState, const YawrateOffsetParameter, 
+extern void yaw_rate_offset_estimate(const TwistStamped, const YawRateOffset,const Heading, const ImuState, const YawrateOffsetParameter,
   YawrateOffsetStatus*, YawRateOffset*);
 
 extern void heading_estimate( const ImuState, const TwistStamped, const YawRateOffset, const YawRateOffset,  const SlipAngle, const Heading, const HeadingParameter, 

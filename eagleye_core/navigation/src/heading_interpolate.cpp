@@ -36,8 +36,7 @@ void heading_interpolate_estimate(const ImuState imu, const TwistStamped velocit
   const SlipAngle slip_angle,const HeadingInterpolateParameter heading_interpolate_parameter, HeadingInterpolateStatus* heading_interpolate_status,
   Heading* heading_interpolate)
 {
-  int i;
-  int estimate_index = 0;
+  int i = 0;
   double yaw_rate = 0.0;
   double diff_estimate_heading_angle = 0.0;
   bool heading_estimate_status = false;

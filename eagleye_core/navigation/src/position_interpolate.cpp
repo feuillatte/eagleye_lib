@@ -41,7 +41,7 @@ void position_interpolate_estimate(Position enu_absolute_pos, Vector3Stamped enu
   double enu_pos[3],tmp_enu[3];
   double ecef_base_pos[3];
   double ecef_pos[3];
-  double llh_pos[3],_llh[3];
+  double llh_pos[3];
   double diff_estimate_enu_pos_x = 0.0;
   double diff_estimate_enu_pos_y = 0.0;
   double diff_estimate_enu_pos_z = 0.0;

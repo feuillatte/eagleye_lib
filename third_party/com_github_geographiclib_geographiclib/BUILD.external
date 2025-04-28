@@ -1,0 +1,24 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+)
+
+cmake(
+    name = "geographiclib",
+    lib_source = ":all_files",
+    out_static_libs = [
+        "libGeographicLib.a",
+    ],
+    working_directory = ".",
+    cache_entries = {
+        "BUILD_SHARED_LIBS": "OFF",
+        "BUILD_BOTH_LIBS": "OFF",
+        "BUILD_DOCUMENTATION": "OFF",
+        "USE_BOOST_FOR_EXAMPLES": "OFF",
+        "GEOGRAPHICLIB_PRECISION": "2",
+        "RELEASE": "ON",
+    },
+    visibility = ["//visibility:public"],
+)

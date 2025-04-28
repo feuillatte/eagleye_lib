@@ -3,7 +3,62 @@
 #include <navigation/navigation.hpp>
 
 EaglEyeLocalization::EaglEyeLocalization(EaglEyeParameters p) {
-   velocity_enable_status_.status.enabled_status = true; // HACK
+    velocity_enable_status_.status.enabled_status = true; // HACK
+
+    velocity_scale_factor_parameter_.imu_rate = p.imu_rate_hz;
+    velocity_scale_factor_parameter_.gnss_rate =p.gnss_rate_hz;
+    velocity_scale_factor_parameter_.moving_judgement_threshold = p.vehicle_moving_judgement_threshold_speed_mps;
+    velocity_scale_factor_parameter_.estimated_minimum_interval = p.velocity_scale_factor_buffering_init_time_min_s;
+    velocity_scale_factor_parameter_.estimated_maximum_interval = p.velocity_scale_factor_buffering_init_time_max_s;
+    velocity_scale_factor_parameter_.gnss_receiving_threshold = p.velocity_scale_factor_minimum_gnss_rate;
+    velocity_scale_factor_parameter_.save_velocity_scale_factor = p.velocity_scale_factor_storage;
+
+    position_parameter_.imu_rate = p.imu_rate_hz;
+    position_parameter_.gnss_rate = p.gnss_rate_hz;
+    position_parameter_.moving_judgement_threshold = p.vehicle_moving_judgement_threshold_speed_mps;
+    position_parameter_.estimated_interval = p.position_data_buffering_interval_m;
+    position_parameter_.update_distance = p.position_data_buffer_update_minimum_distance_m;
+    position_parameter_.gnss_receiving_threshold = p.position_gnss_reception_threshold;
+    position_parameter_.outlier_threshold = p.position_outlier_threshold_m;
+    position_parameter_.outlier_ratio_threshold = p.position_outlier_threshold_ratio;
+    position_parameter_.gnss_error_covariance = 0.5F;  // TODO FIXME HACK
+
+    position_interpolate_parameter_.imu_rate = p.imu_rate_hz;
+    position_interpolate_parameter_.stop_judgement_threshold = p.vehicle_stop_judgement_threshold_speed_mps;
+    position_interpolate_parameter_.sync_search_period = p.position_interpolation_sync_search_period_s;
+    position_interpolate_parameter_.proc_noise = p.position_interpolation_process_noise;
+
+    slip_angle_parameter_.manual_coefficient = p.slip_angle_manual_coefficient;
+
+    heading_interpolate_parameter_.imu_rate = p.imu_rate_hz;
+    heading_interpolate_parameter_.stop_judgement_threshold = p.vehicle_stop_judgement_threshold_speed_mps;
+    heading_interpolate_parameter_.sync_search_period = p.heading_interpolation_sync_search_period_s;
+    heading_interpolate_parameter_.proc_noise = p.heading_interpolation_process_noise;
+
+    heading_parameter_.imu_rate = p.imu_rate_hz;
+    heading_parameter_.gnss_rate = p.gnss_rate_hz;
+    heading_parameter_.stop_judgement_threshold = p.vehicle_stop_judgement_threshold_speed_mps;
+    heading_parameter_.moving_judgement_threshold = p.vehicle_moving_judgement_threshold_speed_mps;
+    heading_parameter_.estimated_minimum_interval = p.heading_data_buffering_init_time_min_s;
+    heading_parameter_.estimated_maximum_interval = p.heading_data_buffering_init_time_max_s;
+    heading_parameter_.gnss_receiving_threshold = p.heading_minimum_gnss_rate;
+    heading_parameter_.outlier_threshold = p.heading_outlier_threshold;
+    heading_parameter_.outlier_ratio_threshold = p.heading_outlier_threshold_ratio;
+    heading_parameter_.curve_judgement_threshold = p.heading_curve_judgement_threshold_rps;
+    heading_parameter_.init_STD = p.heading_init_stddev;
+
+    yaw_rate_offset_parameter_.imu_rate = p.imu_rate_hz;
+    yaw_rate_offset_parameter_.gnss_rate = p.gnss_rate_hz;
+    yaw_rate_offset_parameter_.moving_judgement_threshold = p.vehicle_moving_judgement_threshold_speed_mps;
+    yaw_rate_offset_parameter_.estimated_minimum_interval = p.yaw_rate_offset_buffering_init_time_min_s;
+    yaw_rate_offset_parameter_.estimated_maximum_interval = p.yaw_rate_offset_buffering_init_time_max_1st_s;
+    yaw_rate_offset_parameter_.gnss_receiving_threshold = p.yaw_rate_offset_minimum_gnss_rate;
+    yaw_rate_offset_parameter_.outlier_threshold = p.yaw_rate_offset_outlier_threshold;
+
+    yaw_rate_offset_stop_parameter_.imu_rate = p.imu_rate_hz;
+    yaw_rate_offset_stop_parameter_.estimated_interval = p.yaw_rate_offset_stop_buffering_init_time_min_s;
+    yaw_rate_offset_stop_parameter_.stop_judgement_threshold = p.vehicle_stop_judgement_threshold_speed_mps;
+    yaw_rate_offset_stop_parameter_.outlier_threshold = p.yaw_rate_offset_stop_outlier_threshold;
 }
 
 void EaglEyeLocalization::addImuMeasurement(const ImuState& I) {
@@ -66,36 +121,36 @@ void EaglEyeLocalization::addSteeringAngleMeasurement() {}
 // 5. position_interpolate()
 //
 void EaglEyeLocalization::computeState() {
+    if (vehicle_has_moved_ == false) {
+        velocity_scale_factor_ = default_velocity_scale_factor_;
+    } else {
+        TwistStamped corrected_velocity{};
+        velocity_scale_factor_estimate(
+            last_pvt_,
+            last_velocities_,
+            velocity_scale_factor_parameter_,
+            &velocity_scale_factor_status_,
+            &corrected_velocity,
+            &velocity_scale_factor_
+        );
+        if (std::isfinite(velocity_scale_factor_.scale_factor) == false) {
+            corrected_velocity.twist.linear.x  = last_velocities_.twist.linear.x * previous_velocity_scale_factor_;
+            velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
+            velocity_scale_factor_.status.is_abnormal = true;
+            velocity_scale_factor_.status.error_code = Status::NAN_OR_INFINITE;
+        } else if (config_.global_velocity_scale_factor_percent / 100 < std::abs(1.0 - velocity_scale_factor_.scale_factor)) {
+            corrected_velocity.twist.linear.x = last_velocities_.twist.linear.x * previous_velocity_scale_factor_;
+            velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
+            velocity_scale_factor_.status.is_abnormal = true;
+            velocity_scale_factor_.status.error_code = Status::TOO_LARGE_OR_SMALL;
+        } else {
+            previous_velocity_scale_factor_ = velocity_scale_factor_.scale_factor;
+        }
+        last_velocities_ = corrected_velocity;
+    }
     if (has_new_imu_data_) {
         has_new_imu_data_ = false;
 
-        if (vehicle_has_moved_ == false) {
-            velocity_scale_factor_ = default_velocity_scale_factor_;
-        } else {
-            TwistStamped corrected_velocity{};
-            velocity_scale_factor_estimate(
-                last_gnss_,
-                last_velocities_,
-                velocity_scale_factor_parameter_,
-                &velocity_scale_factor_status_,
-                &corrected_velocity,
-                &velocity_scale_factor_
-            );
-            if (std::isfinite(velocity_scale_factor_.scale_factor) == false) {
-                corrected_velocity.twist.linear.x  = last_velocities_.twist.linear.x * previous_velocity_scale_factor_;
-                velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
-                velocity_scale_factor_.status.is_abnormal = true;
-                velocity_scale_factor_.status.error_code = Status::NAN_OR_INFINITE;
-            } else if (config_.global_velocity_scale_factor_percent / 100 < std::abs(1.0 - velocity_scale_factor_.scale_factor)) {
-                corrected_velocity.twist.linear.x = last_velocities_.twist.linear.x * previous_velocity_scale_factor_;
-                velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
-                velocity_scale_factor_.status.is_abnormal = true;
-                velocity_scale_factor_.status.error_code = Status::TOO_LARGE_OR_SMALL;
-            } else {
-                previous_velocity_scale_factor_ = velocity_scale_factor_.scale_factor;
-            }
-            last_velocities_ = corrected_velocity;
-        }
         yaw_rate_offset_stop_estimate(
             last_velocities_,
             last_imu_data_,

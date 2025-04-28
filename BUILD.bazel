@@ -1,0 +1,84 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+cc_library(
+    name = "eagleye_core_navigation",
+    hdrs = [
+        "eagleye_core/navigation/include/navigation/navigation.hpp",
+    ],
+    includes = [
+        "eagleye_core/navigation/include",
+    ],
+    srcs = [
+        "eagleye_core/navigation/src/slip_angle.cpp",
+        "eagleye_core/navigation/src/heading.cpp",
+        "eagleye_core/navigation/src/heading_interpolate.cpp",
+        "eagleye_core/navigation/src/position.cpp",
+        "eagleye_core/navigation/src/position_interpolate.cpp",
+        "eagleye_core/navigation/src/distance.cpp",
+        "eagleye_core/navigation/src/height.cpp",
+        "eagleye_core/navigation/src/rolling.cpp",
+        "eagleye_core/navigation/src/trajectory.cpp",
+        "eagleye_core/navigation/src/velocity_scale_factor.cpp",
+        "eagleye_core/navigation/src/yaw_rate_offset.cpp",
+        "eagleye_core/navigation/src/yaw_rate_offset_stop.cpp",
+    ],
+    deps = [
+        "@eigen//:eigen",
+        "@yaml-cpp//:yaml-cpp",
+        ":eagleye_core_coordinate",
+    ]
+)
+
+cc_library(
+    name = "eagleye_core_coordinate",
+    hdrs = [
+        "eagleye_core/coordinate/include/coordinate/coordinate.hpp",
+        "eagleye_core/coordinate/ext/angles.h",
+    ],
+    includes = [
+        "eagleye_core/coordinate/include",
+        "eagleye_core/coordinate/ext/",
+    ],
+    srcs = [
+        "eagleye_core/coordinate/src/ecef2llh.cpp",
+        "eagleye_core/coordinate/src/enu2llh.cpp",
+        "eagleye_core/coordinate/src/enu2xyz_vel.cpp",
+        "eagleye_core/coordinate/src/ll2xy.cpp",
+        "eagleye_core/coordinate/src/llh2xyz.cpp",
+        "eagleye_core/coordinate/src/xyz2enu.cpp",
+        "eagleye_core/coordinate/src/xyz2enu_vel.cpp",
+        "eagleye_core/coordinate/src/ll2xy_mgrs.cpp",
+        "eagleye_core/coordinate/src/convertheight.cpp",
+        "eagleye_core/coordinate/src/coordinate.cpp",
+    ],
+    deps = [
+        "@geographic//:geographiclib",
+    ]
+)
+
+cc_library(
+    name = "eagleye_localization",
+    deps = [
+        ":eagleye_core_coordinate",
+        ":eagleye_core_navigation",
+    ],
+    includes = [
+        "lib/include",
+    ],
+    hdrs = [
+        "lib/include/localization.hpp",
+    ],
+    srcs = [
+        "lib/src/localization.cpp",
+    ],
+)
+
+cc_test(
+    name = "eagleye_localization_test",
+    deps = [
+        ":eagleye_localization",
+    ],
+    srcs = [
+        "test/test.cpp",
+    ],
+)
