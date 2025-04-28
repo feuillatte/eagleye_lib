@@ -275,6 +275,13 @@ GNSSState EaglEyeLocalization::getGlobalPoseStateLLA() {
     return g;
 }
 
+Vector3d EaglEyeLocalization::getAttitude() {
+    Vector3d A;
+    A.x = estimated_roll_.rolling_angle;
+    A.y = estimated_pitch_.pitching_angle;
+    A.z = estimated_heading_.heading_angle;
+}
+
 Position EaglEyeLocalization::getGlobalPoseStateENU() {
     return estimated_position_;
 }

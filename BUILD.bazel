@@ -71,6 +71,7 @@ cc_library(
     srcs = [
         "lib/src/localization.cpp",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_test(

@@ -121,6 +121,8 @@ class EaglEyeLocalization {
 
     GNSSState getGlobalPoseStateLLA();
 
+    Vector3d getAttitude();
+
     Position getGlobalPoseStateENU();
 
   private:
