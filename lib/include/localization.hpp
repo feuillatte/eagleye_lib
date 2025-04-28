@@ -33,7 +33,7 @@ struct EaglEyeParameters {
 
     float heading_data_buffering_init_time_min_s{10.F};  // Minimum seconds to collect data before providing a heading estimate
     float heading_data_buffering_init_time_max_s{30.F};  // ??
-    float heading_minimum_gnss_rate{0.25F};  // /??
+    float heading_minimum_gnss_rate{0.25F};  // The ratio of GNSS measurements per estimated trajectory
     float heading_outlier_threshold{0.0524F};
     float heading_outlier_threshold_ratio{0.5F};
     float heading_curve_judgement_threshold_rps{0.0524F}; // Radians per second
