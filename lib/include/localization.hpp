@@ -113,13 +113,17 @@ class EaglEyeLocalization {
 
     void addWheelSpeeds(const WheelSpeedMeasurement& ws);
 
-    void addSteeringAngleMeasurement();
+    void addSteeringAngleMeasurement(const double steer_angle);
 
     void computeState();
 
     void resetRelativeMotionTrackingOrigin(const GNSSPosition& p);
 
+    bool hasPlausiblePosition() const;
+
     GNSSState getGlobalPoseStateLLA();
+
+    Vector3d getRelativePositionOriginECEF();
 
     Vector3d getAttitude();
 

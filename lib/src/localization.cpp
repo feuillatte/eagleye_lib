@@ -61,6 +61,14 @@ EaglEyeLocalization::EaglEyeLocalization(EaglEyeParameters p) {
     yaw_rate_offset_stop_parameter_.outlier_threshold = p.yaw_rate_offset_stop_outlier_threshold;
 }
 
+bool EaglEyeLocalization::hasPlausiblePosition() const {
+    if (estimated_position_.status.enabled_status) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 void EaglEyeLocalization::addImuMeasurement(const ImuState& I) {
     last_imu_data_ = I;
     if (acc_x_offset_.status.enabled_status && acc_x_scale_factor_.status.enabled_status) {
@@ -108,7 +116,11 @@ void EaglEyeLocalization::addWheelSpeeds(const WheelSpeedMeasurement& ws) {
     }
 }
 
-void EaglEyeLocalization::addSteeringAngleMeasurement() {}
+void EaglEyeLocalization::addSteeringAngleMeasurement(const double steer_angle_rad) {
+    const float R = config_.wheel_base_m / std::tan(steer_angle_rad * config_.steer_ratio);
+    const float W = last_velocities_.twist.linear.x / R;
+    last_velocities.twist.angular.z = W;
+}
 
 // The order of evaluation is assumed to be important, as the underlying logic in eagleye_core appears
 // to assume a certain order of internal state varaible updates to properly propagate data forward in
@@ -261,6 +273,9 @@ void EaglEyeLocalization::computeState() {
 }
 
 void EaglEyeLocalization::resetRelativeMotionTrackingOrigin(const GNSSPosition& p) {
+    estimated_position_.enu_pos.x = 0.0;
+    estimated_position_.enu_pos.y = 0.0;
+    estimated_position_.enu_pos.z = 0.0;
     llh2xyz(reinterpret_cast<double*>(const_cast<GNSSPosition*>(&p)), reinterpret_cast<double*>(&estimated_position_.ecef_base_pos));
 }
 
@@ -282,7 +297,14 @@ Vector3d EaglEyeLocalization::getAttitude() {
     A.z = estimated_heading_.heading_angle;
 }
 
-Position EaglEyeLocalization::getGlobalPoseStateENU() {
+Position EaglEyeLocalization::getGlobalPoseState() {
     return estimated_position_;
 }
 
+Vector3d EaglEyeLocalization::getRelativePositionENU() {
+    return estimated_position_.enu_pos;
+}
+
+Vector3d EaglEyeLocalization::getRelativePositionOriginECEF() {
+    return estimated_position_.ecef_base_pos;
+}
