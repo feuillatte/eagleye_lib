@@ -125,6 +125,8 @@ class EaglEyeLocalization {
 
     Vector3d getRelativePositionOriginECEF();
 
+    Vector3d getRelativePositionENU();
+
     Vector3d getAttitude();
 
     Position getGlobalPoseStateENU();

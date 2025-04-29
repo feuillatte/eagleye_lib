@@ -118,8 +118,8 @@ void EaglEyeLocalization::addWheelSpeeds(const WheelSpeedMeasurement& ws) {
 
 void EaglEyeLocalization::addSteeringAngleMeasurement(const double steer_angle_rad) {
     const float R = config_.wheel_base_m / std::tan(steer_angle_rad * config_.steer_ratio);
-    const float W = last_velocities_.twist.linear.x / R;
-    last_velocities.twist.angular.z = W;
+    const double W = last_velocities_.twist.linear.x / R;
+    last_velocities_.twist.angular.z = W;
 }
 
 // The order of evaluation is assumed to be important, as the underlying logic in eagleye_core appears
@@ -295,10 +295,6 @@ Vector3d EaglEyeLocalization::getAttitude() {
     A.x = estimated_roll_.rolling_angle;
     A.y = estimated_pitch_.pitching_angle;
     A.z = estimated_heading_.heading_angle;
-}
-
-Position EaglEyeLocalization::getGlobalPoseState() {
-    return estimated_position_;
 }
 
 Vector3d EaglEyeLocalization::getRelativePositionENU() {
