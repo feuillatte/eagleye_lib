@@ -4,6 +4,7 @@
 
 EaglEyeLocalization::EaglEyeLocalization(EaglEyeParameters p) {
     velocity_enable_status_.status.enabled_status = true; // HACK
+    estimated_distance_.distance = 0.0;
 
     velocity_scale_factor_parameter_.imu_rate = p.imu_rate_hz;
     velocity_scale_factor_parameter_.gnss_rate =p.gnss_rate_hz;
@@ -17,7 +18,7 @@ EaglEyeLocalization::EaglEyeLocalization(EaglEyeParameters p) {
     position_parameter_.gnss_rate = p.gnss_rate_hz;
     position_parameter_.moving_judgement_threshold = p.vehicle_moving_judgement_threshold_speed_mps;
     position_parameter_.estimated_interval = p.position_data_buffering_interval_m;
-    position_parameter_.update_distance = p.position_data_buffer_update_minimum_distance_m;
+    position_parameter_.update_distance = p.position_update_minimum_distance_m;
     position_parameter_.gnss_receiving_threshold = p.position_gnss_reception_threshold;
     position_parameter_.outlier_threshold = p.position_outlier_threshold_m;
     position_parameter_.outlier_ratio_threshold = p.position_outlier_threshold_ratio;
@@ -59,6 +60,29 @@ EaglEyeLocalization::EaglEyeLocalization(EaglEyeParameters p) {
     yaw_rate_offset_stop_parameter_.estimated_interval = p.yaw_rate_offset_stop_buffering_init_time_min_s;
     yaw_rate_offset_stop_parameter_.stop_judgement_threshold = p.vehicle_stop_judgement_threshold_speed_mps;
     yaw_rate_offset_stop_parameter_.outlier_threshold = p.yaw_rate_offset_stop_outlier_threshold;
+
+    height_parameter_.imu_rate = p.imu_rate_hz;
+    height_parameter_.gnss_rate = p.gnss_rate_hz;
+}
+
+bool EaglEyeLocalization::vehicleHasMovedOnce() const {
+    return vehicle_has_moved_;
+}
+
+bool EaglEyeLocalization::hasPlausibleHeight() const {
+    if (estimated_height_.status.enabled_status) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool EaglEyeLocalization::hasPlausibleSlipAngle() const {
+    if (estimated_slip_angle_.status.enabled_status) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 bool EaglEyeLocalization::hasPlausiblePosition() const {
@@ -69,26 +93,150 @@ bool EaglEyeLocalization::hasPlausiblePosition() const {
     }
 }
 
-void EaglEyeLocalization::addImuMeasurement(const ImuState& I) {
-    last_imu_data_ = I;
+bool EaglEyeLocalization::hasPlausibleInterpolatedPosition() const {
+    if (estimated_position_final_.status.enabled_status) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool EaglEyeLocalization::hasPlausibleHeading() const {
+    if (estimated_heading_.status.enabled_status) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void EaglEyeLocalization::addImuMeasurement(const ImuState& imu) {
+    ImuState I = imu;
     if (acc_x_offset_.status.enabled_status && acc_x_scale_factor_.status.enabled_status) {
-        last_imu_data_.linear_acceleration_mpss.x = I.linear_acceleration_mpss.x * acc_x_scale_factor_.acc_x_scale_factor + acc_x_offset_.acc_x_offset;
+        I.linear_acceleration_mpss.x = I.linear_acceleration_mpss.x * acc_x_scale_factor_.acc_x_scale_factor + acc_x_offset_.acc_x_offset;
     }
     // Some kind of coordinate system conversion. Reason unknown.
-    last_imu_data_.angular_velocity_rps.z = -1.F * (I.angular_velocity_rps.z + angular_velocity_offset_stop_.angular_velocity_offset.z);
+    I.angular_velocity_rps.z = -1.F * (I.angular_velocity_rps.z + angular_velocity_offset_stop_.angular_velocity_offset.z);
+    // Prepare slip angle estimation
+    slip_angle_estimate(  // Estimate the wheel slip angle (actual motion angle relative to wheel angle)
+        I,
+        vehicle_kinematics_,
+        velocity_enable_status_,
+        yaw_rate_offset_stop_,
+        yaw_rate_offset_2nd_,
+        slip_angle_parameter_,
+        &estimated_slip_angle_
+    );
+    estimated_slip_angle_.header.stamp.tv_sec = I.timestamp_ns / 1e9;
+    estimated_slip_angle_.header.stamp.tv_nsec = I.timestamp_ns - estimated_slip_angle_.header.stamp.tv_sec * 1e9;
+//    std::printf("Slip angle [%s]\n", estimated_slip_angle_.status.enabled_status ? "Y" : "N");
+    pitching_estimate(  // Estimate the pitch
+        I,
+        last_gnss_,
+        vehicle_kinematics_,
+        estimated_distance_,
+        height_parameter_,
+        &height_status_,
+        &estimated_height_,
+        &estimated_pitch_,
+        &acc_x_offset_,
+        &acc_x_scale_factor_
+    );
+    estimated_pitch_.header.stamp = estimated_slip_angle_.header.stamp;
+//    std::printf("Height [%s]\n", estimated_height_.status.enabled_status ? "Y" : "N");
+//   std::printf("Pitch [%s]\n", estimated_pitch_.status.enabled_status ? "Y" : "N");
+//    std::printf("ACC X Scale factor [%s]\n", acc_x_offset_.status.enabled_status ? "Y" : "N");
+    rolling_estimate(  // Estimate the roll
+        I,
+        vehicle_kinematics_,
+        yaw_rate_offset_stop_,
+        yaw_rate_offset_2nd_,
+        rolling_parameter_,
+        &rolling_status_,
+        &estimated_roll_
+    );
+    estimated_roll_.header.stamp = estimated_slip_angle_.header.stamp;
+//    std::printf("Roll [%s]\n", estimated_roll_.status.enabled_status ? "Y" : "N");
+    heading_interpolate_estimate(
+        I,
+        vehicle_kinematics_,
+        yaw_rate_offset_stop_,
+        yaw_rate_offset_2nd_,
+        estimated_heading_,
+        estimated_slip_angle_,
+        heading_interpolate_parameter_,
+        &heading_interpolate_status_,
+        &estimated_heading_interpolated_
+    );
+    Position PR;  // throwaway, relative estimation only
+    trajectory3d_estimate(
+        I,
+        vehicle_kinematics_,
+        velocity_enable_status_,
+        estimated_heading_interpolated_,
+        yaw_rate_offset_stop_,
+        yaw_rate_offset_2nd_,
+        estimated_pitch_,
+        trajectory_parameter_,
+        &trajectory_status_,
+        &enu_velocities_,
+        &PR,
+        &vehicle_kinematics_,
+        &vehicle_kinematics_with_cov_
+    );
+//    if (PR.status.enabled_status) {
+//        std::printf("Trajectory estimator estimated relative motion %3.9f,%3.9f from origin %5.9f, %5.9f\n", PR.enu_pos.x, PR.enu_pos.y, PR.ecef_base_pos.x, PR.ecef_base_pos.y);
+//    }
+    last_imu_data_ = I;
     has_new_imu_data_ = true;
 }
 
-void EaglEyeLocalization::addGnssPvt(const PositionVelocityTimeSolution& G) {
-    last_gnss_.timestamp_ns = G.timestamp_ns;
-    last_gnss_.position = G.position;
-    enu_velocities_.header.stamp.tv_sec = G.timestamp_ns / 1e9;
-    enu_velocities_.header.stamp.tv_nsec = G.timestamp_ns - enu_velocities_.header.stamp.tv_sec * 1e9;
+void EaglEyeLocalization::addGnssPvt(const PositionVelocityTimeSolution& PVT) {
+    GNSSPVT P;
+    P.timestamp_ns = PVT.timestamp_ns;
+    P.position = PVT.position;
+    P.track = PVT.truenorth_heading_deg;
+    P.speed = PVT.ground_speed_ms;
+    if (PVT.timestamp_ns == last_pvt_.timestamp_ns) {
+        std::fprintf(stderr, "Error: PositionVelocityTimeSolution was fed twice with the same timestamp. Ignoring.\n");
+        return;
+    }
+    heading_estimate(
+        P,
+        last_imu_data_,
+        vehicle_kinematics_,
+        yaw_rate_offset_stop_,
+        yaw_rate_offset_2nd_,
+        estimated_slip_angle_,
+        estimated_heading_,
+        heading_parameter_,
+        &estimated_heading_status_,
+        &estimated_heading_
+    );
+    last_pvt_ = P;
+    GNSSState G;
+    G.timestamp_ns = P.timestamp_ns;
+    G.position = P.position;
+    Vector3Stamped EV;
+    EV.header.stamp.tv_sec = P.timestamp_ns / 1e9;
+    EV.header.stamp.tv_nsec = P.timestamp_ns - EV.header.stamp.tv_sec * 1e9;
     // Convert froM NED to ENU
-    enu_velocities_.vector.x = G.velocity_ned_ms.y;
-    enu_velocities_.vector.y = G.velocity_ned_ms.x;
-    enu_velocities_.vector.z = - G.velocity_ned_ms.z;  // Note the flip
-    has_new_gnss_data_ = true;
+    EV.vector.x = PVT.velocity_ned_ms.y;
+    EV.vector.y = PVT.velocity_ned_ms.x;
+    EV.vector.z = - PVT.velocity_ned_ms.z;  // Note the flip
+    enu_velocities_ = EV;
+    position_estimate(  // Updates estimated position
+        G,
+        vehicle_kinematics_,
+        velocity_enable_status_,
+        estimated_distance_,
+        estimated_heading_,
+        EV,
+        position_parameter_,
+        &position_status_,
+        &estimated_position_
+    );
+    estimated_position_.header = EV.header;
+    last_gnss_ = G;
 }
 
 void EaglEyeLocalization::addWheelSpeeds(const WheelSpeedMeasurement& ws) {
@@ -107,19 +255,52 @@ void EaglEyeLocalization::addWheelSpeeds(const WheelSpeedMeasurement& ws) {
             (ws.wheelspeed_fr_mps + ws.wheelspeed_fl_mps +
              ws.wheelspeed_rr_mps + ws.wheelspeed_rl_mps);
     }
-    last_velocities_.header.stamp.tv_sec = ws.timestamp_ns / 1e9;
-    last_velocities_.header.stamp.tv_nsec = ws.timestamp_ns - last_velocities_.header.stamp.tv_sec * 1e9;
-    last_velocities_.twist.linear.x = driven_wheel_speed_average_mps;
+    vehicle_kinematics_.header.stamp.tv_sec = ws.timestamp_ns / 1e9;
+    vehicle_kinematics_.header.stamp.tv_nsec = ws.timestamp_ns - vehicle_kinematics_.header.stamp.tv_sec * 1e9;
+    vehicle_kinematics_.twist.linear.x = driven_wheel_speed_average_mps;
     has_new_wheelspeed_data_ = true;
-    if (vehicle_has_moved_ == false && last_velocities_.twist.linear.x > config_.vehicle_moving_judgement_threshold_speed_mps) {
+
+    if (vehicle_has_moved_ == false && vehicle_kinematics_.twist.linear.x > config_.vehicle_moving_judgement_threshold_speed_mps) {
         vehicle_has_moved_ = true;
+    }
+
+    if (vehicle_has_moved_ == false) {
+        velocity_scale_factor_ = default_velocity_scale_factor_;
+    } else {
+
+        TwistStamped corrected_velocity{};
+        velocity_scale_factor_estimate(
+            last_pvt_,
+            vehicle_kinematics_,
+            velocity_scale_factor_parameter_,
+            &velocity_scale_factor_status_,
+            &corrected_velocity,
+            &velocity_scale_factor_
+        );
+        corrected_velocity.header.stamp = vehicle_kinematics_.header.stamp;
+        if (std::isfinite(velocity_scale_factor_.scale_factor) == false) {
+            corrected_velocity.twist.linear.x  = vehicle_kinematics_.twist.linear.x * previous_velocity_scale_factor_;
+            velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
+            velocity_scale_factor_.status.is_abnormal = true;
+            velocity_scale_factor_.status.error_code = Status::NAN_OR_INFINITE;
+        } else if (config_.global_velocity_scale_factor_percent / 100 < std::abs(1.0 - velocity_scale_factor_.scale_factor)) {
+            corrected_velocity.twist.linear.x = vehicle_kinematics_.twist.linear.x * previous_velocity_scale_factor_;
+            velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
+            velocity_scale_factor_.status.is_abnormal = true;
+            velocity_scale_factor_.status.error_code = Status::TOO_LARGE_OR_SMALL;
+        } else {
+            previous_velocity_scale_factor_ = velocity_scale_factor_.scale_factor;
+        }
+        vehicle_kinematics_ = corrected_velocity;
+        velocity_enable_status_.header = velocity_scale_factor_.header;
+        velocity_enable_status_.status = velocity_scale_factor_.status;
     }
 }
 
 void EaglEyeLocalization::addSteeringAngleMeasurement(const double steer_angle_rad) {
     const float R = config_.wheel_base_m / std::tan(steer_angle_rad * config_.steer_ratio);
-    const double W = last_velocities_.twist.linear.x / R;
-    last_velocities_.twist.angular.z = W;
+    const double W = vehicle_kinematics_.twist.linear.x / R;
+    vehicle_kinematics_.twist.angular.z = W;
 }
 
 // The order of evaluation is assumed to be important, as the underlying logic in eagleye_core appears
@@ -133,38 +314,11 @@ void EaglEyeLocalization::addSteeringAngleMeasurement(const double steer_angle_r
 // 5. position_interpolate()
 //
 void EaglEyeLocalization::computeState() {
-    if (vehicle_has_moved_ == false) {
-        velocity_scale_factor_ = default_velocity_scale_factor_;
-    } else {
-        TwistStamped corrected_velocity{};
-        velocity_scale_factor_estimate(
-            last_pvt_,
-            last_velocities_,
-            velocity_scale_factor_parameter_,
-            &velocity_scale_factor_status_,
-            &corrected_velocity,
-            &velocity_scale_factor_
-        );
-        if (std::isfinite(velocity_scale_factor_.scale_factor) == false) {
-            corrected_velocity.twist.linear.x  = last_velocities_.twist.linear.x * previous_velocity_scale_factor_;
-            velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
-            velocity_scale_factor_.status.is_abnormal = true;
-            velocity_scale_factor_.status.error_code = Status::NAN_OR_INFINITE;
-        } else if (config_.global_velocity_scale_factor_percent / 100 < std::abs(1.0 - velocity_scale_factor_.scale_factor)) {
-            corrected_velocity.twist.linear.x = last_velocities_.twist.linear.x * previous_velocity_scale_factor_;
-            velocity_scale_factor_.scale_factor = previous_velocity_scale_factor_;
-            velocity_scale_factor_.status.is_abnormal = true;
-            velocity_scale_factor_.status.error_code = Status::TOO_LARGE_OR_SMALL;
-        } else {
-            previous_velocity_scale_factor_ = velocity_scale_factor_.scale_factor;
-        }
-        last_velocities_ = corrected_velocity;
-    }
     if (has_new_imu_data_) {
         has_new_imu_data_ = false;
 
         yaw_rate_offset_stop_estimate(
-            last_velocities_,
+            vehicle_kinematics_,
             last_imu_data_,
             yaw_rate_offset_stop_parameter_,
             &yaw_rate_offset_stop_status_,
@@ -179,97 +333,29 @@ void EaglEyeLocalization::computeState() {
             previous_yaw_rate_offset_stop_ = yaw_rate_offset_stop_.yaw_rate_offset;
             yaw_rate_offset_stop_.status.is_abnormal = false;
         }
-
-        // Prepare slip angle estimation
-        velocity_enable_status_.header = velocity_scale_factor_.header;
-        velocity_enable_status_.status = velocity_scale_factor_.status;
-        estimated_slip_angle_.header.stamp.tv_sec = last_imu_data_.timestamp_ns / 1e9;
-        estimated_slip_angle_.header.stamp.tv_nsec = last_imu_data_.timestamp_ns - estimated_slip_angle_.header.stamp.tv_sec * 1e9;
-        slip_angle_estimate(  // Estimate the wheel slip angle (actual motion angle relative to wheel angle)
-            last_imu_data_,
-            last_velocities_,
-            velocity_enable_status_,
-            yaw_rate_offset_stop_,
-            yaw_rate_offset_2nd_,
-            slip_angle_parameter_,
-            &estimated_slip_angle_
-        );
-
-        pitching_estimate(  // Estimate the pitch
-            last_imu_data_,
-            last_gnss_,
-            last_velocities_,
-            distance_estimate_,
-            height_parameter_,
-            &height_status_,
-            &estimated_height_,
-            &estimated_pitch_,
-            &acc_x_offset_,
-            &acc_x_scale_factor_
-        );
-        rolling_estimate(  // Estimate the roll
-            last_imu_data_,
-            last_velocities_,
-            yaw_rate_offset_stop_,
-            yaw_rate_offset_2nd_,
-            rolling_parameter_,
-            &rolling_status_,
-            &estimated_roll_
-        );
     }
     if (has_new_wheelspeed_data_) {
         has_new_wheelspeed_data_ = false;
         distance_estimate(
-            last_velocities_,
+            vehicle_kinematics_,
             &distance_status_,
-            &distance_estimate_
+            &estimated_distance_
         );
     }
-    if (has_new_steering_data_) {
-        has_new_steering_data_ = false;
-        const float R{config_.wheel_base_m / std::tan(last_steer_angle_rad_ * config_.steer_ratio)};
-        const float W{last_velocities_.twist.linear.x / R};
-        last_velocities_.twist.angular.z = W;
+    if (hasPlausiblePosition()) {
+        position_interpolate_estimate(
+            estimated_position_,
+            enu_velocities_,
+            estimated_position_,   // should be Smoothed Position instead, only for height
+            estimated_height_,
+            estimated_heading_,
+            position_interpolate_parameter_,
+            &position_interpolate_status_,
+            &estimated_position_final_,
+            &estimated_llh_
+        );
     }
 
-    trajectory3d_estimate(
-        last_imu_data_,
-        last_velocities_,
-        velocity_enable_status_,
-        estimated_heading_,
-        yaw_rate_offset_stop_,
-        yaw_rate_offset_2nd_,
-        estimated_pitch_,
-        trajectory_parameter_,
-        &trajectory_status_,
-        &enu_velocities_,
-        &estimated_position_,
-        &last_velocities_,
-        &last_velocities_with_cov_
-    );
-    position_estimate(  // Updates estimated position
-        last_gnss_,
-        last_velocities_,
-        velocity_enable_status_,
-        distance_estimate_,
-        estimated_heading_,
-        enu_velocities_,
-        position_parameter_,
-        &position_status_,
-        &estimated_position_
-    );
-    position_interpolate_estimate(
-        estimated_position_,
-        enu_velocities_,
-        estimated_position_,   // should be Smoothed GNSS position instead
-        estimated_height_,
-        estimated_heading_,
-        position_interpolate_parameter_,
-        &position_interpolate_status_,
-        &estimated_position_,
-        &estimated_llh_
-    );
-    estimated_position_.header = enu_velocities_.header;
 }
 
 void EaglEyeLocalization::resetRelativeMotionTrackingOrigin(const GNSSPosition& p) {
@@ -281,12 +367,27 @@ void EaglEyeLocalization::resetRelativeMotionTrackingOrigin(const GNSSPosition& 
 
 GNSSState EaglEyeLocalization::getGlobalPoseStateLLA() {
     GNSSState g;
-    g.timestamp_ns = estimated_position_.header.stamp.tv_sec * 1e9 + estimated_position_.header.stamp.tv_nsec;
-    g.position.lat = estimated_llh_.lat;
-    g.position.lon = estimated_llh_.lon;
-    g.position.alt_msl = estimated_llh_.alt_msl;
-    g.position.surface_stddev_m = estimated_position_.covariance[4];
-    g.position.alt_stddev_m = estimated_position_.covariance[8];
+    if (estimated_position_final_.status.enabled_status) {
+        g.timestamp_ns = estimated_position_final_.header.stamp.tv_sec * 1e9 + estimated_position_final_.header.stamp.tv_nsec;
+        g.position.lat = estimated_llh_.lat;
+        g.position.lon = estimated_llh_.lon;
+        g.position.alt_msl = estimated_llh_.alt_msl;
+        g.position.surface_stddev_m = estimated_position_final_.covariance[4];
+        g.position.alt_stddev_m = estimated_position_final_.covariance[8];
+    }
+    return g;
+}
+
+GNSSState EaglEyeLocalization::getGlobalPoseStateLLAraw() {
+    GNSSState g;
+    if (estimated_position_.status.enabled_status) {
+        g.timestamp_ns = estimated_position_.header.stamp.tv_sec * 1e9 + estimated_position_.header.stamp.tv_nsec;
+        g.position.lat = estimated_llh_.lat;
+        g.position.lon = estimated_llh_.lon;
+        g.position.alt_msl = estimated_llh_.alt_msl;
+        g.position.surface_stddev_m = estimated_position_.covariance[4];
+        g.position.alt_stddev_m = estimated_position_.covariance[8];
+    }
     return g;
 }
 
@@ -295,12 +396,13 @@ Vector3d EaglEyeLocalization::getAttitude() {
     A.x = estimated_roll_.rolling_angle;
     A.y = estimated_pitch_.pitching_angle;
     A.z = estimated_heading_.heading_angle;
+    return A;
 }
 
 Vector3d EaglEyeLocalization::getRelativePositionENU() {
-    return estimated_position_.enu_pos;
+    return estimated_position_final_.enu_pos;
 }
 
 Vector3d EaglEyeLocalization::getRelativePositionOriginECEF() {
-    return estimated_position_.ecef_base_pos;
+    return estimated_position_final_.ecef_base_pos;
 }

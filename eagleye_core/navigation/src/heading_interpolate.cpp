@@ -66,8 +66,9 @@ void heading_interpolate_estimate(const ImuState imu, const TwistStamped velocit
     heading_interpolate_status->number_buffer = search_buffer_number;
   }
 
-  const double imu_time = heading.header.stamp.tv_sec + heading.header.stamp.tv_nsec / 1e9;
-  if (heading_interpolate_status->heading_stamp_last != imu_time && heading.status.estimate_status)
+  const double heading_estimate_time = heading.header.stamp.tv_sec + heading.header.stamp.tv_nsec / 1e9;
+  const double imu_measurement_time = imu.timestamp_ns / 1e9; // header.stamp.tv_sec + imu.header.stamp.tv_nsec / 1e9;
+  if (heading_interpolate_status->heading_stamp_last != heading_estimate_time && heading.status.estimate_status)
   {
     heading_estimate_status = true;
     heading_interpolate_status->heading_estimate_start_status = true;
@@ -77,14 +78,14 @@ void heading_interpolate_estimate(const ImuState imu, const TwistStamped velocit
   if(heading_interpolate_status->time_last != 0 && std::abs(velocity.twist.linear.x) >
     heading_interpolate_parameter.stop_judgement_threshold)
   {
-    double dt = imu_time - heading_interpolate_status->time_last;
+    double dt = imu_measurement_time - heading_interpolate_status->time_last;
     heading_interpolate_status->provisional_heading_angle += yaw_rate * dt;
     heading_interpolate_status->heading_variance_last += proc_noise*proc_noise;
   }
 
   // data buffer generate
   heading_interpolate_status->provisional_heading_angle_buffer.push_back(heading_interpolate_status->provisional_heading_angle);
-  heading_interpolate_status->imu_stamp_buffer.push_back(imu_time);
+  heading_interpolate_status->imu_stamp_buffer.push_back(imu_measurement_time);
   imu_stamp_buffer_length = std::distance(heading_interpolate_status->imu_stamp_buffer.begin(), heading_interpolate_status->imu_stamp_buffer.end());
 
   if (imu_stamp_buffer_length > search_buffer_number)
@@ -100,7 +101,7 @@ void heading_interpolate_estimate(const ImuState imu, const TwistStamped velocit
     {
       for (estimate_index = heading_interpolate_status->number_buffer; estimate_index > 0; estimate_index--)
       {
-        if (heading_interpolate_status->imu_stamp_buffer[estimate_index-1] == imu_time)
+        if (heading_interpolate_status->imu_stamp_buffer[estimate_index-1] == heading_estimate_time)
         {
           break;
         }
@@ -149,7 +150,7 @@ void heading_interpolate_estimate(const ImuState imu, const TwistStamped velocit
     heading_interpolate->status.estimate_status = false;
   }
 
-  heading_interpolate_status->time_last = imu_time;
-  heading_interpolate_status->heading_stamp_last = imu_time;
+  heading_interpolate_status->time_last = imu_measurement_time;
+  heading_interpolate_status->heading_stamp_last = heading_estimate_time;
 
 }

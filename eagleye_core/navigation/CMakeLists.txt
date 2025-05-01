@@ -16,7 +16,7 @@ include_directories(
   ${YAML_CPP_INCLUDE_DIRS}
 )
 
-add_library(navigation
+add_library(eagleye_navigation
   src/velocity_scale_factor.cpp
   src/distance.cpp
   src/yaw_rate_offset_stop.cpp
@@ -38,17 +38,24 @@ add_library(navigation
 #  src/velocity_estimator.cpp
 )
 
-target_link_libraries(navigation
-  ${YAML_CPP_LIBRARIES}
+target_include_directories(
+    eagleye_navigation
+    PUBLIC
+    ${CMAKE_CURRENT_LIST_DIR}/include
 )
-add_dependencies(navigation eagleye_coordinate)
+
+target_link_libraries(eagleye_navigation
+  ${YAML_CPP_LIBRARIES}
+  eagleye_coordinate
+)
+add_dependencies(eagleye_navigation eagleye_coordinate)
 
 install(DIRECTORY include/navigation/
   DESTINATION include/navigation/
   FILES_MATCHING PATTERN "*.hpp"
 )
 
-install(TARGETS navigation
+install(TARGETS eagleye_navigation
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib

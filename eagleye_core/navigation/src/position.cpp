@@ -59,7 +59,6 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
 
   if(!position_status->gnss_update_failure)
   {
-    std::printf("            EaglEye Position function private: input data is flagged as valid.\n");
     gnss_status = true;
 
     PoseStamped pose;
@@ -119,41 +118,36 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
     enu_pos[1] = tmp_pos[1];
     enu_pos[2] = tmp_pos[2];
 
-  //  std::printf("            EaglEye Position function private: computed enu position [%5.3f, %5.3f, %5.3f]\n",
   //      enu_pos[0], enu_pos[1], enu_pos[2]);
 
   }
   else
   {
-    std::printf("            EaglEye Position function private: input data is flagged as invalid!\n");
     gnss_status = false;
   }
 
-  //std::printf("          EaglEye Position function private: Headingstatus %d AND VelocityStatus enabled %d\n",
-  //      heading_interpolate_3rd.status.estimate_status, velocity_status.status.enabled_status);
+  std::printf("position_estimate() private: Heading status [%d]  Velocity status [%d]\n",
+        heading_interpolate_3rd.status.estimate_status, velocity_status.status.enabled_status);
   if (heading_interpolate_3rd.status.estimate_status == true && velocity_status.status.enabled_status == true)
   {
-    std::printf("            EaglEye Position function private: Marking heading estimate status count as valid\n");
+//    std::printf("position_estimate() private: Heading and velocity inputs OK\n");
     heading_interpolate_3rd.status.estimate_status = false; //in order to prevent being judged many times
     ++position_status->heading_estimate_status_count;
   }
 
   if(position_status->time_last != 0)
   {
-  //  std::printf("            EaglEye Position function private: position_status->time_last is nonzero. Adding ENU velocity to position status.\n");
     position_status->enu_relative_pos_x = position_status->enu_relative_pos_x + enu_vel.vector.x * (enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9 - position_status->time_last);
     position_status->enu_relative_pos_y = position_status->enu_relative_pos_y + enu_vel.vector.y * (enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9 - position_status->time_last);
     position_status->enu_relative_pos_z = position_status->enu_relative_pos_z + enu_vel.vector.z * (enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9 - position_status->time_last);
   }
 
-  //std::printf("           EaglyEye Position function private: branch: distance %f last %f >= update distance %f AND gnss_status %d AND heading count %d > 0\n",
-//        distance.distance, position_status->distance_last, position_parameter.update_distance, gnss_status, position_status->heading_estimate_status_count);
   // if the input distance traveled minus the last distance is greater than the update ditsance interval and GNSS is ok, AND the heading estimate status count 
-  if (distance.distance - position_status->distance_last >= position_parameter.update_distance && gnss_status == true &&
-    position_status->heading_estimate_status_count > 0)
+//  std::printf("Distance %4.2fm - %4.2fm >= %4.2fm | GNSS Status [%d] | Heading estimates [%d]\n",
+//        distance.distance, position_status->distance_last, position_parameter.update_distance, gnss_status,
+//        position_status->heading_estimate_status_count);
+  if (distance.distance - position_status->distance_last >= position_parameter.update_distance && gnss_status == true && position_status->heading_estimate_status_count > 0)
   {
-  //  std::printf("            EaglEye Position function private: Distance minus PositionStatus distance is greater than the PositionParameter update distance and GNSS is valid and PositionStatus heading estimate status count is greater than zero\n");
-
     if (position_status->estimated_number < estimated_number_max)
     {
       ++position_status->estimated_number;
@@ -188,15 +182,10 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
       position_status->distance_buffer.erase(position_status->distance_buffer.begin());
     }
     position_status->distance_last = distance.distance;
-  } else {
-    //std::printf("            EaglEye Position function private: Distance something something condition not met. Discarding data!\n");
-
   }
 
   if (data_status == true)
   {
-    std::printf("            EaglEye Position function private: Data status is TRUE. Doing something complicated!\n");
-
     if (distance.distance > position_parameter.estimated_interval && gnss_status == true &&
       velocity.twist.linear.x > position_parameter.moving_judgement_threshold && position_status->heading_estimate_status_count > 0)
     {
@@ -372,10 +361,7 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
         }
       }
     }
-  } else {
-    //std::printf("            EaglEye Position function private: Data was determined to be invalid!\n");
   }
-  //std::printf("            EaglEye Position function private: Reaching end of function.\n");
 
   position_status->time_last = enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9;
   data_status = false;
@@ -391,34 +377,32 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
   double ecef_base_pos[3];
   bool gnss_update_failure;
 
-  llh_pos[0] = gga.position.lat *M_PI/180;
-  llh_pos[1] = gga.position.lon *M_PI/180;
+  constexpr double deg2rad{M_PI/180.0};
+
+  llh_pos[0] = gga.position.lat * deg2rad;
+  llh_pos[1] = gga.position.lon * deg2rad;
   llh_pos[2] = gga.position.alt_msl; //  + gga.undulation;
 
   llh2xyz(llh_pos,ecef_pos);
 
 
-  //std::printf("        EagleEye Position function branch\n");
-  if(enu_absolute_pos->ecef_base_pos.x == 0 && enu_absolute_pos->ecef_base_pos.y == 0 && enu_absolute_pos->ecef_base_pos.z == 0)
-  {
-    //std::printf("            EagleEye Position function: no initial position!\n");
-    if (gga.timestamp_ns / 1e9 != 0)
-    {
-      //std::printf("                EagleEye Position function: GNSS measurement looks valid.\n");
+  if(enu_absolute_pos->ecef_base_pos.x == 0 && enu_absolute_pos->ecef_base_pos.y == 0 && enu_absolute_pos->ecef_base_pos.z == 0) {
+    if (gga.timestamp_ns != 0) {
       enu_absolute_pos->ecef_base_pos.x = ecef_pos[0];
       enu_absolute_pos->ecef_base_pos.y = ecef_pos[1];
       enu_absolute_pos->ecef_base_pos.z = ecef_pos[2];
 
-      if(position_parameter.ecef_base_pos_x != 0 && position_parameter.ecef_base_pos_y != 0 && position_parameter.ecef_base_pos_z != 0)
-      {
+      if(position_parameter.ecef_base_pos_x != 0 && position_parameter.ecef_base_pos_y != 0 && position_parameter.ecef_base_pos_z != 0) {
         enu_absolute_pos->ecef_base_pos.x = position_parameter.ecef_base_pos_x;
         enu_absolute_pos->ecef_base_pos.y = position_parameter.ecef_base_pos_y;
         enu_absolute_pos->ecef_base_pos.z = position_parameter.ecef_base_pos_z;
+        std::printf("============ Updated ECEF base position ====\n");
+
       }
     }
     else
     {
-      //std::printf("                EagleEye Position function: GNSS measurement has timestamp==zero. Ignoring!\n");
+      std::printf("GNSS timestamp is zero!. Cannot update reference position.\n");
       return;
     }
 
@@ -429,10 +413,8 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
 
   xyz2enu(ecef_pos, ecef_base_pos, enu_pos);
 
-  //std::printf("        EaglEye Position function: branch.\n");
   if (!std::isfinite(enu_pos[0])||!std::isfinite(enu_pos[1])||!std::isfinite(enu_pos[2]))
   {
-    //std::printf("            EaglEye Position function: ENU position math error. GNSS Update failure!\n");
     enu_pos[0] = 0.0;
     enu_pos[1] = 0.0;
     enu_pos[2] = 0.0;
@@ -440,26 +422,18 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
   }
   else
   {
-    //std::printf("            EaglEye Position function: GNSS Update success!\n");
     gnss_update_failure = false;
   }
 
-  std::printf("            EaglEye Position function: branch!\n");
   if (position_status->nmea_time_last == gga.timestamp_ns / 1e9 || enu_vel.header.stamp.tv_sec == 0)
   {
-    //std::printf("                EaglEye Position function: ERROR: NMEA time matches GNSS input time [%s] OR ENU velocity header has timestamp zero [%s]!\n",
-    //    position_status->nmea_time_last == gga.timestamp_ns / 1e9 ? "yes" : "no",
-    //    enu_vel.header.stamp.tv_sec == 0 ? "yes" : "no"
-    //);
+    std::fprintf(stderr," GNSS timestamp is seen before [%d] or ENU velocity stamp is zero [%d]. Flagging input data as invalid.\n",
+        (position_status->nmea_time_last == gga.timestamp_ns / 1e9),
+        enu_vel.header.stamp.tv_sec == 0);
     enu_pos[0] = 0.0;
     enu_pos[1] = 0.0;
     enu_pos[2] = 0.0;
     gnss_update_failure = true;
-  }
-  else
-  {
-    //std::printf("                EaglEye Position function: GNSS Update success!\n");
-    gnss_update_failure = false;
   }
 
   position_status->enu_pos[0] = enu_pos[0];
@@ -467,6 +441,6 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
   position_status->enu_pos[2] = enu_pos[2];
   position_status->gnss_update_failure = gnss_update_failure;
   position_status->nmea_time_last = gga.timestamp_ns / 1e9;
-  //std::printf("        EaglEye Position function: running private calculation for result.\n");
+//  std::printf("position_estimate() calling private\n");
   position_estimate_(velocity, velocity_status, distance, heading_interpolate_3rd, enu_vel, position_parameter, position_status, enu_absolute_pos);
 }

@@ -150,8 +150,7 @@ void trajectory3d_estimate(const ImuState imu, const TwistStamped velocity,
   TwistWithCovarianceStamped* eagleye_twist_with_covariance)
 {
 
-  const double imu_time_seconds = imu.timestamp_ns / 1e9;
-  const double imu_time = imu.timestamp_ns - imu_time_seconds * 1e9;
+  const double imu_time = imu.timestamp_ns / 1e9;
   if (std::abs(velocity.twist.linear.x) > trajectory_parameter.stop_judgement_threshold &&
     yaw_rate_offset_2nd.status.enabled_status == true)
   {

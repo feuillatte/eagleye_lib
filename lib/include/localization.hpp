@@ -43,7 +43,7 @@ struct EaglEyeParameters {
     float heading_interpolation_process_noise{0.0005F};  // ??
 
     float position_data_buffering_interval_m{300.F};
-    float position_data_buffer_update_minimum_distance_m{0.1F};
+    float position_update_minimum_distance_m{0.1F};
     float position_gnss_reception_threshold{0.1F}; // Mysterious value 0.0-1.0 "Threshold of minimum GNSS reception rate"
     float position_outlier_threshold_m{3.0F}; // meters
     float position_outlier_threshold_ratio{0.5F}; // 0.0 - 1.0 ratio of allowable outliers within the interval
@@ -119,9 +119,18 @@ class EaglEyeLocalization {
 
     void resetRelativeMotionTrackingOrigin(const GNSSPosition& p);
 
+    bool hasPlausibleHeading() const;
     bool hasPlausiblePosition() const;
+    bool vehicleHasMovedOnce() const;
+    bool hasPlausibleHeight() const;
+    bool hasPlausibleSlipAngle() const;
+    bool hasPlausibleInterpolatedPosition() const;
 
     GNSSState getGlobalPoseStateLLA();
+
+    GNSSState getGlobalPoseStateLLAraw();
+
+    Position getGlobalPoseStateENU();
 
     Vector3d getRelativePositionOriginECEF();
 
@@ -129,21 +138,18 @@ class EaglEyeLocalization {
 
     Vector3d getAttitude();
 
-    Position getGlobalPoseStateENU();
-
   private:
     EaglEyeParameters config_{};
 
     bool has_new_imu_data_{false};
-    bool has_new_steering_data_{false};
     bool has_new_wheelspeed_data_{false};
-    bool has_new_gnss_data_{false};
     bool vehicle_has_moved_{false};
 
     Heading estimated_heading_{};
     HeadingStatus estimated_heading_status_{};
     HeadingParameter heading_parameter_{};
 
+    Heading estimated_heading_interpolated_{};
     HeadingInterpolateParameter heading_interpolate_parameter_{};
     HeadingInterpolateStatus heading_interpolate_status_{};
 
@@ -152,6 +158,7 @@ class EaglEyeLocalization {
     PositionStatus position_status_{};
     PositionStatus estimated_position_status_{};
 
+    Position estimated_position_final_{};
     PositionInterpolateParameter position_interpolate_parameter_{};
     PositionInterpolateStatus position_interpolate_status_{};
     GNSSPosition estimated_llh_{};
@@ -164,14 +171,14 @@ class EaglEyeLocalization {
 
     StatusStamped velocity_enable_status_{};
 
-    Distance distance_estimate_{};
+    Distance estimated_distance_{};
     DistanceStatus distance_status_{};
 
     TrajectoryStatus trajectory_status_{};
     TrajectoryParameter trajectory_parameter_{};
 
-    TwistStamped last_velocities_{};
-    TwistWithCovarianceStamped last_velocities_with_cov_{};
+    TwistStamped vehicle_kinematics_{};
+    TwistWithCovarianceStamped vehicle_kinematics_with_cov_{};
     GNSSState last_gnss_{};
     GNSSPVT last_pvt_{};
     ImuState last_imu_data_{};
@@ -208,8 +215,6 @@ class EaglEyeLocalization {
     VelocityScaleFactorParameter velocity_scale_factor_parameter_{};
     VelocityScaleFactor default_velocity_scale_factor_{};
     VelocityScaleFactorStatus velocity_scale_factor_status_{};
-    float last_steer_angle_rad_{0.F};
-    
 
 };
 

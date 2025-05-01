@@ -33,16 +33,22 @@
 
 void distance_estimate(const TwistStamped velocity, DistanceStatus* distance_status, Distance* distance)
 {
-  const double velocity_seconds = velocity.header.stamp.tv_sec + velocity.header.stamp.tv_nsec / 1e9;
-  if(distance_status->time_last != 0)
-  {
-    distance->distance = distance->distance + velocity.twist.linear.x * std::abs((velocity_seconds -
-      distance_status->time_last));
-    distance->status.enabled_status = distance->status.estimate_status = true;
-    distance_status->time_last = velocity_seconds;
+  if (velocity.header.stamp.tv_sec == 0) {
+    std::fprintf(stderr, "Warning: Velocity header has timestamp ZERO. Ignoring.\n");
+    return;
   }
-  else
-  {
-    distance_status->time_last = velocity_seconds;
+  const double velocity_timestamp_seconds = velocity.header.stamp.tv_sec + velocity.header.stamp.tv_nsec / 1e9;
+  if(distance_status->is_first_data) {
+     distance_status->time_last = velocity_timestamp_seconds;
+     distance_status->is_first_data = false;
+     std::fprintf(stderr, "Distance estimation first data frame. Set first reference timestamp.\n");
+     return;
+  }
+  const double dt = velocity_timestamp_seconds - distance_status->time_last;
+  const double ds = dt * velocity.twist.linear.x;
+  if (dt > 0.0 && dt < 1.0) {
+      distance->distance = distance->distance + ds;
+      distance->status.enabled_status = distance->status.estimate_status = true;
+      distance_status->time_last = velocity_timestamp_seconds;
   }
 }

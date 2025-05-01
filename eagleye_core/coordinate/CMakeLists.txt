@@ -21,7 +21,7 @@ link_directories(
   /usr/local/lib
 )
 
-add_library(coordinate
+add_library(eagleye_coordinate
   src/ecef2llh.cpp
   src/enu2llh.cpp
   src/enu2xyz_vel.cpp
@@ -33,7 +33,12 @@ add_library(coordinate
   src/convertheight.cpp
 )
 
-target_link_libraries(coordinate
+target_include_directories(eagleye_coordinate
+    PUBLIC
+    ${CMAKE_CURRENT_LIST_DIR}/include
+)
+
+target_link_libraries(eagleye_coordinate
   Geographic
 )
 
@@ -48,7 +53,7 @@ install(
   DESTINATION share
 )
 
-install(TARGETS coordinate
+install(TARGETS eagleye_coordinate
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib

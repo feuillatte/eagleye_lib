@@ -22,17 +22,25 @@ include_directories(
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/eagleye_core/coordinate)
+
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/eagleye_core/navigation)
 
-add_library(eagleye
+add_library(eagleye STATIC
     lib/src/localization.cpp
 )
 
+target_include_directories(eagleye
+    PUBLIC
+    lib/include
+)
+
 target_link_libraries(eagleye
-    eagleye_coordinates
+    eagleye_coordinate
     eagleye_navigation
     Geographic
 )
+
+
 
 install(
     DIRECTORY lib/include/

@@ -68,8 +68,8 @@ struct GNSSState {
 
 struct GNSSPVT {
     uint64_t timestamp_ns{};
-    float track{};   // Heading in degrees, true north
-    float speed{};
+    float track{0.F};   // Heading in degrees, true north
+    float speed{0.F};
     GNSSPosition position{};
 };
 
@@ -86,7 +86,7 @@ struct ImuState {
 };
 
 struct Distance {
-    double distance;
+    double distance{0.0};
     Status status;
 };
 
@@ -97,7 +97,7 @@ struct Header {
 };
 
 struct Height {
-    double height;
+    double height{0.0};
     Status status;
 };
 
@@ -230,6 +230,7 @@ struct VelocityScaleFactorStatus
 
 struct DistanceStatus
 {
+  bool is_first_data{true};
   double time_last;
 };
 
@@ -493,16 +494,16 @@ struct TrajectoryStatus
 
 struct HeightParameter
 {
-  double imu_rate{25};
-  double gnss_rate{2};
+  double imu_rate{50};
+  double gnss_rate{4};
   double moving_judgement_threshold{2.78};
-  double estimated_minimum_interval{10};
-  double estimated_maximum_interval{30};
-  double update_distance;
-  double gnss_receiving_threshold;
-  double outlier_threshold;
-  double outlier_ratio_threshold;
-  double moving_average_time;
+  double estimated_minimum_interval{200};
+  double estimated_maximum_interval{2000};
+  double update_distance{1.0};
+  double gnss_receiving_threshold{0.1};
+  double outlier_threshold{0.3};
+  double outlier_ratio_threshold{0.5};
+  double moving_average_time{1.0};
 };
 
 struct HeightStatus

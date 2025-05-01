@@ -42,9 +42,7 @@ void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate
   std::vector<double>::iterator max;
 
   const uint16_t estimated_buffer_number_min = heading_parameter.estimated_minimum_interval * heading_parameter.imu_rate;
-  //std::printf("Estimated buffer number min == %f", heading_parameter.estimated_minimum_interval * heading_parameter.imu_rate);
   const uint16_t estimated_buffer_number_max = heading_parameter.estimated_maximum_interval * heading_parameter.imu_rate;
-  //std::printf("Estimated buffer number max == %f", heading_parameter.estimated_maximum_interval * heading_parameter.imu_rate);
   double enabled_data_ratio = heading_parameter.gnss_rate / heading_parameter.imu_rate * heading_parameter.gnss_receiving_threshold;
   double remain_data_ratio = enabled_data_ratio * heading_parameter.outlier_ratio_threshold;
 
@@ -54,7 +52,6 @@ void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate
   }
   else
   {
-    std::printf("        heading_estimate_(): Estimated number is capped at MAX.\n");
     heading_status->estimated_number  = estimated_buffer_number_max;
   }
 
@@ -63,7 +60,6 @@ void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate
   // data buffer generate
   heading_status->time_buffer .push_back(imu.timestamp_ns / 1e9);
   heading_status->yaw_rate_buffer .push_back(yaw_rate);
-  std::printf("        heading_estimate_(): Adding correction velocity to buffer (%9.3f)\n", velocity.twist.linear.x);
   heading_status->correction_velocity_buffer.push_back(velocity.twist.linear.x);
   heading_status->yaw_rate_offset_stop_buffer .push_back(yaw_rate_offset_stop.yaw_rate_offset);
   heading_status->yaw_rate_offset_buffer .push_back(yaw_rate_offset.yaw_rate_offset);
@@ -87,16 +83,11 @@ void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate
   std::vector<int> velocity_index;
   std::vector<int> index;
 
-  std::printf("        heading_estimate_(): Sanity check conditions SampleCount [%s]   GnssStatus[%d-1] [%s]   CorrectionVelocityBuffer[%d-1](%3.9f) > MovingJudgement(%3.9f) [%s]   YawRateBuffer[%d-1] < CurveJudgement [%s]\n",
-      (heading_status->estimated_number  > estimated_buffer_number_min) ? "Y" : "N",
-      heading_status->estimated_number,
-      (heading_status->gnss_status_buffer[heading_status->estimated_number-1]) ? "Y" : "N",
-      heading_status->estimated_number,
-      heading_status->correction_velocity_buffer[heading_status->estimated_number - 1],
-      heading_parameter.moving_judgement_threshold,
-      (heading_status->correction_velocity_buffer[heading_status->estimated_number -1] > heading_parameter.moving_judgement_threshold) ? "Y" : "N",
-      heading_status->estimated_number,
-      (fabsf(heading_status->yaw_rate_buffer[heading_status->estimated_number -1]) < heading_parameter.curve_judgement_threshold) ? "Y" : "N");
+//  std::printf("        heading_estimate_(): Sanity check | SampleCount [%s] | GnssStatus [%s] | MovingJudgement [%s] | CurveJudgement [%s]\n",
+//      (heading_status->estimated_number  > estimated_buffer_number_min) ? "Y" : "N",
+//      (heading_status->gnss_status_buffer[heading_status->estimated_number-1]) ? "Y" : "N",
+//      (heading_status->correction_velocity_buffer[heading_status->estimated_number -1] > heading_parameter.moving_judgement_threshold) ? "Y" : "N",
+//      (fabsf(heading_status->yaw_rate_buffer[heading_status->estimated_number -1]) < heading_parameter.curve_judgement_threshold) ? "Y" : "N");
 
   if (heading_status->estimated_number  > estimated_buffer_number_min
       && heading_status->gnss_status_buffer[heading_status->estimated_number -1] == true
@@ -255,36 +246,37 @@ void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate
 
 double _rmc_track = 0;
 
-void heading_estimate(const GNSSPVT nmea_rmc, ImuState imu,TwistStamped velocity,
+void heading_estimate(const GNSSPVT nav_pvt, ImuState imu,TwistStamped velocity,
   YawRateOffset yaw_rate_offset_stop,YawRateOffset yaw_rate_offset,SlipAngle slip_angle,
   Heading heading_interpolate,HeadingParameter heading_parameter, HeadingStatus* heading_status,Heading* heading)
 {
   bool gnss_status;
   double doppler_heading_angle = 0.0;
 
-  _rmc_track = nmea_rmc.track;
-  const double pvt_time = nmea_rmc.timestamp_ns / 1e9;
-  //std::printf("        heading_estimate(): HeadingStatusTime %f == PvtTime %f OR PvtTime == 0 OR PVT heading %3.1f == 0\n",
-  //      heading_status->rmc_time_last, pvt_time, nmea_rmc.track);
-  if (heading_status->rmc_time_last == pvt_time || pvt_time == 0 || nmea_rmc.track == 0)
+  _rmc_track = nav_pvt.track;
+  const double pvt_time = nav_pvt.timestamp_ns / 1e9;
+  if (heading_status->rmc_time_last == pvt_time || pvt_time == 0.0 || nav_pvt.track == 0.0)
   {
-    std::printf("        heading_estimate() gnss_status is invalid.\n");
+    std::printf("        heading_estimate() gnss_status with time [%ld] and track [%3.1f] is invalid: Already Seen[%s] ZeroTime[%s] NoTrack[%s]\n",
+        nav_pvt.timestamp_ns,
+        nav_pvt.track,
+        (heading_status->rmc_time_last == pvt_time) ? "Y" : "N",
+        (pvt_time == 0) ? "Y": "N",
+        (nav_pvt.track == 0) ? "Y" : "N"
+    );
     gnss_status = false;
     doppler_heading_angle = 0;
     heading_status->rmc_time_last = pvt_time;
   }
   else
   {
-    std::printf("        heading_estimate(): GNSS data is ok\n");
     gnss_status = true;
-    doppler_heading_angle = nmea_rmc.track * M_PI / 180;
+    doppler_heading_angle = nav_pvt.track * M_PI / 180;
     heading_status->rmc_time_last = pvt_time;
   }
 
   heading_status->heading_angle_buffer .push_back(doppler_heading_angle);
   heading_status->gnss_status_buffer .push_back(gnss_status);
-
-  //std::printf("        heading_estimate(): running private function.\n");
   heading_estimate_(imu,velocity,yaw_rate_offset_stop,yaw_rate_offset,slip_angle,heading_interpolate,heading_parameter,heading_status,heading);
 }
 
