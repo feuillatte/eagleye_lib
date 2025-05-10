@@ -24,7 +24,6 @@ link_directories(
 add_library(eagleye_coordinate
   src/ecef2llh.cpp
   src/enu2llh.cpp
-  src/enu2xyz_vel.cpp
   src/ll2xy.cpp
   src/llh2xyz.cpp
   src/xyz2enu.cpp

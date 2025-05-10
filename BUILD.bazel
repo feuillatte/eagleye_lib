@@ -42,7 +42,6 @@ cc_library(
     srcs = [
         "eagleye_core/coordinate/src/ecef2llh.cpp",
         "eagleye_core/coordinate/src/enu2llh.cpp",
-        "eagleye_core/coordinate/src/enu2xyz_vel.cpp",
         "eagleye_core/coordinate/src/ll2xy.cpp",
         "eagleye_core/coordinate/src/llh2xyz.cpp",
         "eagleye_core/coordinate/src/xyz2enu.cpp",
@@ -53,6 +52,7 @@ cc_library(
     ],
     deps = [
         "@geographic//:geographiclib",
+        "@eigen//:eigen",
     ]
 )
 
