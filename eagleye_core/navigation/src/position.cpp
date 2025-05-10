@@ -28,8 +28,96 @@
  * Author MapIV Sekino
  */
 
+// This algorithm makes a naive estimate of the current position by projecting
+// the input ENU velocity onto the current position estimate for the delta time between
+// the last execution time and the ENU velocity timestamp
+
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
+
+// The original implementation of the coordinate system transformation using ROS tf below.
+// Replaced with Eigen to get rid of ROS dependencies
+//    tf::Quaternion q;
+//    q.setRPY(0, 0, kQuarterTurnRadians - heading_interpolate_3rd.heading_angle);
+//
+//    tf::Transform transform;
+//    transform.setOrigin(tf::Vector3(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z));
+//
+//    transform.setRotation(q);
+//
+//    tf::Transform transform2;
+//    tf::Quaternion q2(position_parameter.tf_gnss_rotation_x, position_parameter.tf_gnss_rotation_y, position_parameter.tf_gnss_rotation_z, position_parameter.tf_gnss_rotation_w);
+//
+//    transform2.setOrigin(transform*tf::Vector3(-position_parameter.tf_gnss_translation_x, -position_parameter.tf_gnss_translation_y, -position_parameter.tf_gnss_translation_z));
+//    transform2.setRotation(transform*q2);
+//
+//    tf::Vector3 tmp_pos;
+//    tmp_pos = transform2.getOrigin();*/
+
+static inline Eigen::Isometry3d rotatePosition(double* enu_position, const double map_heading_rad) {
+
+    // The code block below appears to relate to applying a correction to the GNSS easimate pose.
+    // The source of this correction (aside from the Position algorithm settings) is unclear.
+    // The eagleye_rt/src/position_node.cpp appears to get these from a tf2 transform broadcaster,
+    // but it's unclear if one is ever used and what the purpose of this exercise is. Maybe for RTK use?
+    // The implementation is also needlessly complex and causes a decent performance hit.
+    constexpr double kQuarterTurnRadians{90.0 * M_PI / 180.0};
+    constexpr double kHalfTurnRadians{2.0 * M_PI};
+
+    // Unwind the heading angle (in radians) to 2Pi, equivalent to a range of 360 degrees
+    const double unwound_mapheading_rad = fmod(map_heading_rad, kHalfTurnRadians);
+
+    // Convert the True North map heading to an ENU heading. ENU headings wind in the opposite direction
+    // and are offset by 90 degrees (pi/2 radians): zero is East rather than North.
+    const double enu_heading{kQuarterTurnRadians - unwound_mapheading_rad};
+
+    // Represent the ENU position as a vector
+    PoseStamped pose;
+    pose.pose.position.x = enu_position[0];
+    pose.pose.position.y = enu_position[1];
+    pose.pose.position.z = enu_position[2];
+    Eigen::Vector3d base_position(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z);
+    // Create a quaternion from the yaw angle only
+    Eigen::Quaterniond base_orientation_q(Eigen::AngleAxisd(enu_heading, Eigen::Vector3d::UnitZ()));
+    // Rotate the ENU position vector using the quaternion
+    Eigen::Isometry3d unadjusted_world_pose = Eigen::Translation3d(base_position) * base_orientation_q;
+    return unadjusted_world_pose;
+}
+
+static inline Eigen::Vector3d applyAdjustmentTransformation(const Eigen::Isometry3d& unadjusted_world_position, const PositionParameter& config) {
+
+    // The following appears to relate to a refinement of the estimated ENU position
+    // Produce another Quaternion from a configured rotation (and normalize it
+    Eigen::Quaterniond adjustment_rotation_relative(
+        config.tf_gnss_rotation_w,
+        config.tf_gnss_rotation_x,
+        config.tf_gnss_rotation_y,
+        config.tf_gnss_rotation_z
+    );
+    adjustment_rotation_relative.normalize();
+
+    // Create a a translation from a configured position offset)
+    Eigen::Vector3d adjustment_translation_relative_neg(
+        -config.tf_gnss_translation_x,
+        -config.tf_gnss_translation_y,
+        -config.tf_gnss_translation_z
+    );
+
+    // Translate the rotated ENU position by the configured offsets from the configuration
+    Eigen::Vector3d adjusted_position_world = unadjusted_world_position * adjustment_translation_relative_neg;
+    // Rotate the heading quaternion with the configured rotation values to provduce a new rotation quaternion
+    const Eigen::Quaterniond unadjusted_world_rotation(unadjusted_world_position.rotation());
+    Eigen::Quaterniond adjusted_orientation_world = unadjusted_world_rotation * adjustment_rotation_relative;
+    adjusted_orientation_world.normalize();
+
+    // Rotate the translated ENU position with the new rotation quaternion that considers the configured rotation
+    Eigen::Isometry3d adjusted_world_pose = Eigen::Translation3d(adjusted_position_world) * adjusted_orientation_world;
+
+    // Get the new ENU position
+    Eigen::Vector3d tmp_pos = adjusted_world_pose.translation();
+    return tmp_pos;
+}
+
 
 void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Distance distance,
   Heading heading_interpolate_3rd,Vector3Stamped enu_vel,PositionParameter position_parameter,
@@ -53,125 +141,76 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
   double enabled_data_ratio = position_parameter.gnss_rate / position_parameter.imu_rate * position_parameter.gnss_receiving_threshold;
   double remain_data_ratio = enabled_data_ratio * position_parameter.outlier_ratio_threshold;
 
+  // Take the ENU-converted GNSS measurement from the internal state
   enu_pos[0] = position_status->enu_pos[0];
   enu_pos[1] = position_status->enu_pos[1];
   enu_pos[2] = position_status->enu_pos[2];
 
-  if(!position_status->gnss_update_failure)
-  {
+  if (position_status->gnss_update_failure == false) {
     gnss_status = true;
+    // We rotate the ENU position for some reason, using the true north map heading estimate
+    const Eigen::Isometry3d rotated_position = rotatePosition(&enu_pos[0], heading_interpolate_3rd.heading_angle);
 
-    PoseStamped pose;
-
-    pose.pose.position.x = enu_pos[0];
-    pose.pose.position.y = enu_pos[1];
-    pose.pose.position.z = enu_pos[2];
-
-    heading_interpolate_3rd.heading_angle = fmod(heading_interpolate_3rd.heading_angle, 2 * M_PI);
-
-    constexpr double kHalfPi{90.0 * M_PI / 180.0};
-
-    double base_yaw_angle{kHalfPi - heading_interpolate_3rd.heading_angle};
-    Eigen::Vector3d base_position(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z);
-    Eigen::Quaterniond base_orientation_q(Eigen::AngleAxisd(base_yaw_angle, Eigen::Vector3d::UnitZ()));
-    Eigen::Isometry3d base_transform = Eigen::Translation3d(base_position) * base_orientation_q;
-
-    Eigen::Quaterniond sensor_rotation_relative(
-        position_parameter.tf_gnss_rotation_w,
-        position_parameter.tf_gnss_rotation_x,
-        position_parameter.tf_gnss_rotation_y,
-        position_parameter.tf_gnss_rotation_z
-    );
-    sensor_rotation_relative.normalize();
-    Eigen::Vector3d sensor_translation_relative_neg(
-        -position_parameter.tf_gnss_translation_x,
-        -position_parameter.tf_gnss_translation_y,
-        -position_parameter.tf_gnss_translation_z
-    );
-
-    Eigen::Vector3d sensor_position_world = base_transform * sensor_translation_relative_neg;
-
-    Eigen::Quaterniond sensor_orientation_world = base_orientation_q * sensor_rotation_relative;
-    sensor_orientation_world.normalize();
-
-    Eigen::Isometry3d sensor_transform_world = Eigen::Translation3d(sensor_position_world) * sensor_orientation_world;
-    Eigen::Vector3d tmp_pos = sensor_transform_world.translation();
-
-/*    tf::Quaternion q;
-    q.setRPY(0, 0, kHalfPi - heading_interpolate_3rd.heading_angle);
-
-    tf::Transform transform;
-    transform.setOrigin(tf::Vector3(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z));
-
-    transform.setRotation(q);
-
-    tf::Transform transform2;
-    tf::Quaternion q2(position_parameter.tf_gnss_rotation_x, position_parameter.tf_gnss_rotation_y, position_parameter.tf_gnss_rotation_z, position_parameter.tf_gnss_rotation_w);
-
-    transform2.setOrigin(transform*tf::Vector3(-position_parameter.tf_gnss_translation_x, -position_parameter.tf_gnss_translation_y, -position_parameter.tf_gnss_translation_z));
-    transform2.setRotation(transform*q2);
-
-    tf::Vector3 tmp_pos;
-    tmp_pos = transform2.getOrigin();*/
-
-    enu_pos[0] = tmp_pos[0];
-    enu_pos[1] = tmp_pos[1];
-    enu_pos[2] = tmp_pos[2];
-
-  //      enu_pos[0], enu_pos[1], enu_pos[2]);
-
-  }
-  else
-  {
+    // If we have an adjustment rotation magnitude greater than zero, or an adjustment translation greater than zero, apply that adjustment
+    const double config_translation_magnitude = std::fabs(position_parameter.tf_gnss_translation_x) + std::fabs(position_parameter.tf_gnss_translation_y) + std::fabs(position_parameter.tf_gnss_translation_z);
+    if (std::fabs(position_parameter.tf_gnss_rotation_w) > std::numeric_limits<double>::epsilon() || config_translation_magnitude > std::numeric_limits<double>::epsilon()) {
+        const Eigen::Vector3d adjusted_position = applyAdjustmentTransformation(rotated_position, position_parameter);
+        enu_pos[0] = adjusted_position[0];
+        enu_pos[1] = adjusted_position[1];
+        enu_pos[2] = adjusted_position[2];
+    } else { // Otherwise, just use the rotated position
+        const Eigen::Vector3d unadjusted_position = rotated_position.translation();
+        enu_pos[0] = unadjusted_position[0];
+        enu_pos[1] = unadjusted_position[1];
+        enu_pos[2] = unadjusted_position[2];
+    }
+  } else {
     gnss_status = false;
   }
 
-  std::printf("position_estimate() private: Heading status [%d]  Velocity status [%d]\n",
-        heading_interpolate_3rd.status.estimate_status, velocity_status.status.enabled_status);
-  if (heading_interpolate_3rd.status.estimate_status == true && velocity_status.status.enabled_status == true)
-  {
-//    std::printf("position_estimate() private: Heading and velocity inputs OK\n");
-    heading_interpolate_3rd.status.estimate_status = false; //in order to prevent being judged many times
+  // If we have seemingly valid input heading information and vehicle kinematics information, increment the input heading sample counter
+  if (heading_interpolate_3rd.status.estimate_status == true && velocity_status.status.enabled_status == true) {
+    heading_interpolate_3rd.status.estimate_status = false; //in order to prevent this data frame from being evaluated more than once
     ++position_status->heading_estimate_status_count;
   }
 
-  if(position_status->time_last != 0)
-  {
-    position_status->enu_relative_pos_x = position_status->enu_relative_pos_x + enu_vel.vector.x * (enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9 - position_status->time_last);
-    position_status->enu_relative_pos_y = position_status->enu_relative_pos_y + enu_vel.vector.y * (enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9 - position_status->time_last);
-    position_status->enu_relative_pos_z = position_status->enu_relative_pos_z + enu_vel.vector.z * (enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9 - position_status->time_last);
+  const double enu_velocity_timestamp_seconds{enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec * 1e-9};
+  const double position_update_delta_t_seconds{enu_velocity_timestamp_seconds - position_status->time_last};
+  if(position_status->time_last != 0) { // If this is not the first execution cycle, i.e. we have not stored a last timestamp
+    // Update the relative position estimate with the XYZ speeds multiplied by the delta time between the last update timestamp and the ENU velocity input timestamp
+    // This requires that the unit for the ENU velocities is meters per second
+    position_status->enu_relative_pos_x = position_status->enu_relative_pos_x + enu_vel.vector.x * position_update_delta_t_seconds;
+    position_status->enu_relative_pos_y = position_status->enu_relative_pos_y + enu_vel.vector.y * position_update_delta_t_seconds;
+    position_status->enu_relative_pos_z = position_status->enu_relative_pos_z + enu_vel.vector.z * position_update_delta_t_seconds;
   }
 
-  // if the input distance traveled minus the last distance is greater than the update ditsance interval and GNSS is ok, AND the heading estimate status count 
-//  std::printf("Distance %4.2fm - %4.2fm >= %4.2fm | GNSS Status [%d] | Heading estimates [%d]\n",
-//        distance.distance, position_status->distance_last, position_parameter.update_distance, gnss_status,
-//        position_status->heading_estimate_status_count);
-  if (distance.distance - position_status->distance_last >= position_parameter.update_distance && gnss_status == true && position_status->heading_estimate_status_count > 0)
-  {
-    if (position_status->estimated_number < estimated_number_max)
-    {
+  // if the internal state heading sample count is greater than zero, the GNSS input seemed valid and the position update minimum distance condition is met..
+  if (distance.distance - position_status->distance_last >= position_parameter.update_distance && gnss_status == true && position_status->heading_estimate_status_count > 0) {
+    if (position_status->estimated_number < estimated_number_max) {
       ++position_status->estimated_number;
-    }
-    else
-    {
+    } else {
       position_status->estimated_number = estimated_number_max;
     }
 
+    // Push the ENU position estimate (that seems to be just the GNSS measurement really) into an internal state buffer
     position_status->enu_pos_x_buffer.push_back(enu_pos[0]);
     position_status->enu_pos_y_buffer.push_back(enu_pos[1]);
     //enu_pos_z_buffer.push_back(enu_pos[2]);
-    position_status->enu_pos_z_buffer.push_back(0);
+    position_status->enu_pos_z_buffer.push_back(0);  // Someone's hack; disabled Z axis
+
     position_status->correction_velocity_buffer.push_back(velocity.twist.linear.x);
+
     position_status->enu_relative_pos_x_buffer.push_back(position_status->enu_relative_pos_x);
     position_status->enu_relative_pos_y_buffer.push_back(position_status->enu_relative_pos_y);
     //position_status->enu_relative_pos_z_buffer.push_back(position_status->enu_relative_pos_z);
-    position_status->enu_relative_pos_z_buffer.push_back(0);
+    position_status->enu_relative_pos_z_buffer.push_back(0);  // Someone's hack; disabled Z axis
+
     position_status->distance_buffer.push_back(distance.distance);
 
-    data_status = true; //judgement that refreshed data
+    data_status = true; // set data status to true, as we have refreshed the internal state data inputs
 
-    if (position_status->distance_buffer.end() - position_status->distance_buffer.begin() > estimated_number_max)
-    {
+    // If the internal state distance measurement buffer is overflowing, pop one entry from all buffers
+    if (position_status->distance_buffer.end() - position_status->distance_buffer.begin() > estimated_number_max) {
       position_status->enu_pos_x_buffer.erase(position_status->enu_pos_x_buffer.begin());
       position_status->enu_pos_y_buffer.erase(position_status->enu_pos_y_buffer.begin());
       position_status->enu_pos_z_buffer.erase(position_status->enu_pos_z_buffer.begin());
@@ -184,62 +223,59 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
     position_status->distance_last = distance.distance;
   }
 
-  if (data_status == true)
-  {
+  // If we flagged that we have new (valid) data
+  if (data_status == true) {
+    // If we have moved a configured minimum interval, the GNSS measurement appears valid, the vehicle appears to be moving and we have
+    // at least one input heading sample in the internal state, ...
     if (distance.distance > position_parameter.estimated_interval && gnss_status == true &&
-      velocity.twist.linear.x > position_parameter.moving_judgement_threshold && position_status->heading_estimate_status_count > 0)
+        velocity.twist.linear.x > position_parameter.moving_judgement_threshold && position_status->heading_estimate_status_count > 0)
     {
       std::vector<int> distance_index;
       std::vector<int> velocity_index;
       std::vector<int> index;
 
-      for (i = 0; i < position_status->estimated_number; i++)
-      {
-        if (position_status->distance_buffer[position_status->estimated_number-1] - position_status->distance_buffer[i]  <= position_parameter.estimated_interval)
-        {
+      for (i = 0; i < position_status->estimated_number; i++) {
+        if (position_status->distance_buffer[position_status->estimated_number-1] - position_status->distance_buffer[i]  <= position_parameter.estimated_interval) {
           distance_index.push_back(i);
-
-          if (position_status->correction_velocity_buffer[i] > position_parameter.moving_judgement_threshold)
-          {
+          if (position_status->correction_velocity_buffer[i] > position_parameter.moving_judgement_threshold) {
             velocity_index.push_back(i);
           }
-
         }
       }
 
-      set_intersection(velocity_index.begin(), velocity_index.end(), distance_index.begin(), distance_index.end(),
-                       inserter(index, index.end()));
+      set_intersection(velocity_index.begin(), velocity_index.end(), distance_index.begin(), distance_index.end(), inserter(index, index.end()));
 
       index_length = std::distance(index.begin(), index.end());
       velocity_index_length = std::distance(velocity_index.begin(), velocity_index.end());
 
-      if (index_length > velocity_index_length * enabled_data_ratio)
-      {
-
-        while (1)
-        {
+      if (index_length > velocity_index_length * enabled_data_ratio) {
+        while (true) {
           index_length = std::distance(index.begin(), index.end());
 
           base_enu_pos_x_buffer.clear();
           base_enu_pos_y_buffer.clear();
           base_enu_pos_z_buffer.clear();
 
-          for (i = 0; i < position_status->estimated_number; i++)
-          {
-            base_enu_pos_x_buffer.push_back(position_status->enu_pos_x_buffer[index[index_length-1]] -
-              position_status->enu_relative_pos_x_buffer[index[index_length-1]] + position_status->enu_relative_pos_x_buffer[i]);
-            base_enu_pos_y_buffer.push_back(position_status->enu_pos_y_buffer[index[index_length-1]] -
-              position_status->enu_relative_pos_y_buffer[index[index_length-1]] + position_status->enu_relative_pos_y_buffer[i]);
-            base_enu_pos_z_buffer.push_back(position_status->enu_pos_z_buffer[index[index_length-1]] - 
-              position_status->enu_relative_pos_z_buffer[index[index_length-1]] + position_status->enu_relative_pos_z_buffer[i]);
+          for (i = 0; i < position_status->estimated_number; i++) {
+            base_enu_pos_x_buffer.push_back(
+                position_status->enu_pos_x_buffer[index[index_length-1]] -
+                position_status->enu_relative_pos_x_buffer[index[index_length-1]] + position_status->enu_relative_pos_x_buffer[i]
+            );
+            base_enu_pos_y_buffer.push_back(
+                position_status->enu_pos_y_buffer[index[index_length-1]] -
+                position_status->enu_relative_pos_y_buffer[index[index_length-1]] + position_status->enu_relative_pos_y_buffer[i]
+            );
+            base_enu_pos_z_buffer.push_back(
+                position_status->enu_pos_z_buffer[index[index_length-1]] - 
+                position_status->enu_relative_pos_z_buffer[index[index_length-1]] + position_status->enu_relative_pos_z_buffer[i]
+            );
           }
 
           diff_x_buffer2.clear();
           diff_y_buffer2.clear();
           diff_z_buffer2.clear();
 
-          for (i = 0; i < static_cast<int>(index_length); i++)
-          {
+          for (i = 0; i < static_cast<int>(index_length); i++) {
             diff_x_buffer2.push_back(base_enu_pos_x_buffer[index[i]] - position_status->enu_pos_x_buffer[index[i]]);
             diff_y_buffer2.push_back(base_enu_pos_y_buffer[index[i]] - position_status->enu_pos_y_buffer[index[i]]);
             diff_z_buffer2.push_back(base_enu_pos_z_buffer[index[i]] - position_status->enu_pos_z_buffer[index[i]]);
@@ -257,22 +293,26 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
           base_enu_pos_y_buffer2.clear();
           base_enu_pos_z_buffer2.clear();
 
-          for (i = 0; i < position_status->estimated_number; i++)
-          {
-            base_enu_pos_x_buffer2.push_back(tmp_enu_pos_x - position_status->enu_relative_pos_x_buffer[index[index_length - 1]] +
-              position_status->enu_relative_pos_x_buffer[i]);
-            base_enu_pos_y_buffer2.push_back(tmp_enu_pos_y - position_status->enu_relative_pos_y_buffer[index[index_length - 1]] +
-              position_status->enu_relative_pos_y_buffer[i]);
-            base_enu_pos_z_buffer2.push_back(tmp_enu_pos_z - position_status->enu_relative_pos_z_buffer[index[index_length - 1]] +
-              position_status->enu_relative_pos_z_buffer[i]);
+          for (i = 0; i < position_status->estimated_number; i++) {
+            base_enu_pos_x_buffer2.push_back(
+                tmp_enu_pos_x - position_status->enu_relative_pos_x_buffer[index[index_length - 1]] +
+                position_status->enu_relative_pos_x_buffer[i]
+            );
+            base_enu_pos_y_buffer2.push_back(
+                tmp_enu_pos_y - position_status->enu_relative_pos_y_buffer[index[index_length - 1]] +
+                position_status->enu_relative_pos_y_buffer[i]
+            );
+            base_enu_pos_z_buffer2.push_back(
+                tmp_enu_pos_z - position_status->enu_relative_pos_z_buffer[index[index_length - 1]] +
+                position_status->enu_relative_pos_z_buffer[i]
+            );
           }
 
           diff_x_buffer.clear();
           diff_y_buffer.clear();
           diff_z_buffer.clear();
 
-          for (i = 0; i < static_cast<int>(index_length); i++)
-          {
+          for (i = 0; i < static_cast<int>(index_length); i++) {
             diff_x_buffer.push_back(fabsf(base_enu_pos_x_buffer2[index[i]] - position_status->enu_pos_x_buffer[index[i]]));
             diff_y_buffer.push_back(fabsf(base_enu_pos_y_buffer2[index[i]] - position_status->enu_pos_y_buffer[index[i]]));
             diff_z_buffer.push_back(fabsf(base_enu_pos_z_buffer2[index[i]] - position_status->enu_pos_z_buffer[index[i]]));
@@ -284,25 +324,16 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
           max_x_index = std::distance(diff_x_buffer.begin(), max_x);
           max_y_index = std::distance(diff_y_buffer.begin(), max_y);
 
-          if(diff_x_buffer[max_x_index] < diff_y_buffer[max_y_index])
-          {
-            if (diff_x_buffer[max_x_index] > position_parameter.outlier_threshold)
-            {
+          if(diff_x_buffer[max_x_index] < diff_y_buffer[max_y_index]) {
+            if (diff_x_buffer[max_x_index] > position_parameter.outlier_threshold) {
               index.erase(index.begin() + max_x_index);
-            }
-            else
-            {
+            } else {
               break;
             }
-          }
-          else
-          {
-            if (diff_y_buffer[max_y_index] > position_parameter.outlier_threshold)
-            {
+          } else {
+            if (diff_y_buffer[max_y_index] > position_parameter.outlier_threshold) {
               index.erase(index.begin() + max_y_index);
-            }
-            else
-            {
+            } else {
               break;
             }
           }
@@ -310,22 +341,17 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
           index_length = std::distance(index.begin(), index.end());
           velocity_index_length = std::distance(velocity_index.begin(), velocity_index.end());
 
-          if (index_length < velocity_index_length * remain_data_ratio)
-          {
+          if (index_length < velocity_index_length * remain_data_ratio) {
             break;
           }
-
         }
 
         index_length = std::distance(index.begin(), index.end());
         velocity_index_length = std::distance(velocity_index.begin(), velocity_index.end());
 
-        if (index_length >= velocity_index_length * remain_data_ratio)
-        {
-
+        if (index_length >= velocity_index_length * remain_data_ratio) {
           std::vector<double> diff_x_buffer_for_covariance, diff_y_buffer_for_covariance, diff_z_buffer_for_covariance;
-          for (i = 0; i < static_cast<int>(index_length); i++)
-          {
+          for (i = 0; i < static_cast<int>(index_length); i++) {
             diff_x_buffer_for_covariance.push_back(base_enu_pos_x_buffer2[index[i]] - position_status->enu_pos_x_buffer[index[i]]);
             diff_y_buffer_for_covariance.push_back(base_enu_pos_y_buffer2[index[i]] - position_status->enu_pos_y_buffer[index[i]]);
             diff_z_buffer_for_covariance.push_back(base_enu_pos_z_buffer2[index[i]] - position_status->enu_pos_z_buffer[index[i]]);
@@ -337,8 +363,7 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
 
           double cov_x, cov_y, cov_z;
           double square_sum_x = 0, square_sum_y = 0, square_sum_z = 0;
-          for (i = 0; i < static_cast<int>(index_length); i++)
-          {
+          for (i = 0; i < static_cast<int>(index_length); i++) {
             square_sum_x += (diff_x_buffer_for_covariance[i] - avg_x) * (diff_x_buffer_for_covariance[i] - avg_x);
             square_sum_y += (diff_y_buffer_for_covariance[i] - avg_y) * (diff_y_buffer_for_covariance[i] - avg_y);
             square_sum_z += (diff_z_buffer_for_covariance[i] - avg_z) * (diff_z_buffer_for_covariance[i] - avg_z);
@@ -347,8 +372,7 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
           cov_y = square_sum_y/index_length;
           cov_z = square_sum_z/index_length;
 
-          if (index[index_length - 1] == position_status->estimated_number-1)
-          {
+          if (index[index_length - 1] == position_status->estimated_number-1) {
             enu_absolute_pos->enu_pos.x = tmp_enu_pos_x;
             enu_absolute_pos->enu_pos.y = tmp_enu_pos_y;
             enu_absolute_pos->enu_pos.z = tmp_enu_pos_z;
@@ -362,8 +386,8 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
       }
     }
   }
-
-  position_status->time_last = enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9;
+  // Set the internal state last update time to the input ENU velocity timestamp
+  position_status->time_last = enu_velocity_timestamp_seconds;
   data_status = false;
 }
 
@@ -379,56 +403,50 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
 
   constexpr double deg2rad{M_PI/180.0};
 
+  // Convert the GNSS measurement geodetic coordinates to ECEF
   llh_pos[0] = gga.position.lat * deg2rad;
   llh_pos[1] = gga.position.lon * deg2rad;
   llh_pos[2] = gga.position.alt_msl; //  + gga.undulation;
-
   llh2xyz(llh_pos,ecef_pos);
 
-
+  // If no ECEF base position is set yet...
   if(enu_absolute_pos->ecef_base_pos.x == 0 && enu_absolute_pos->ecef_base_pos.y == 0 && enu_absolute_pos->ecef_base_pos.z == 0) {
+    // If we have a GNSS measurement, set the base position to the ECEF version of the GNSS position
     if (gga.timestamp_ns != 0) {
       enu_absolute_pos->ecef_base_pos.x = ecef_pos[0];
       enu_absolute_pos->ecef_base_pos.y = ecef_pos[1];
       enu_absolute_pos->ecef_base_pos.z = ecef_pos[2];
-
+      // If the user has configured an ECEF base position override, ignore the above and use the config setting instead
       if(position_parameter.ecef_base_pos_x != 0 && position_parameter.ecef_base_pos_y != 0 && position_parameter.ecef_base_pos_z != 0) {
         enu_absolute_pos->ecef_base_pos.x = position_parameter.ecef_base_pos_x;
         enu_absolute_pos->ecef_base_pos.y = position_parameter.ecef_base_pos_y;
         enu_absolute_pos->ecef_base_pos.z = position_parameter.ecef_base_pos_z;
-        std::printf("============ Updated ECEF base position ====\n");
-
       }
     }
-    else
-    {
-      std::printf("GNSS timestamp is zero!. Cannot update reference position.\n");
-      return;
-    }
-
   }
+
+  // Convert the GNSS measurement ECEF to ENU, using whatever current ECEF origin values
   ecef_base_pos[0] = enu_absolute_pos->ecef_base_pos.x;
   ecef_base_pos[1] = enu_absolute_pos->ecef_base_pos.y;
   ecef_base_pos[2] = enu_absolute_pos->ecef_base_pos.z;
-
   xyz2enu(ecef_pos, ecef_base_pos, enu_pos);
 
-  if (!std::isfinite(enu_pos[0])||!std::isfinite(enu_pos[1])||!std::isfinite(enu_pos[2]))
-  {
+  // If the conversion result is numerically invalid, set the ENU position to zero
+  if (!std::isfinite(enu_pos[0])||!std::isfinite(enu_pos[1])||!std::isfinite(enu_pos[2])) {
     enu_pos[0] = 0.0;
     enu_pos[1] = 0.0;
     enu_pos[2] = 0.0;
     gnss_update_failure = true;
-  }
-  else
-  {
+  } else {
     gnss_update_failure = false;
   }
 
-  if (position_status->nmea_time_last == gga.timestamp_ns / 1e9 || enu_vel.header.stamp.tv_sec == 0)
-  {
+  // If we have already processed the input GNSS measurement (identified by timestamp) or the ENU velocity header has an invalid timestamp,
+  // invalidate the ENU position and flag a GNSS update failure.
+  const double gnss_update_timestamp_seconds{gga.timestamp_ns * 1e-9};
+  if (position_status->nmea_time_last == gnss_update_timestamp_seconds || enu_vel.header.stamp.tv_sec == 0) {
     std::fprintf(stderr," GNSS timestamp is seen before [%d] or ENU velocity stamp is zero [%d]. Flagging input data as invalid.\n",
-        (position_status->nmea_time_last == gga.timestamp_ns / 1e9),
+        (position_status->nmea_time_last == gnss_update_timestamp_seconds),
         enu_vel.header.stamp.tv_sec == 0);
     enu_pos[0] = 0.0;
     enu_pos[1] = 0.0;
@@ -436,11 +454,12 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
     gnss_update_failure = true;
   }
 
+  // Update the internal state with the new ENU position estimate (no matter if valid or not)
   position_status->enu_pos[0] = enu_pos[0];
   position_status->enu_pos[1] = enu_pos[1];
   position_status->enu_pos[2] = enu_pos[2];
-  position_status->gnss_update_failure = gnss_update_failure;
-  position_status->nmea_time_last = gga.timestamp_ns / 1e9;
-//  std::printf("position_estimate() calling private\n");
+  position_status->gnss_update_failure = gnss_update_failure;  // Register the GNSS update failure flag in the internal state
+  position_status->nmea_time_last = gnss_update_timestamp_seconds;  // Register the GNSS update timestamp in the internal state
+  // Run the private estimator algorithm
   position_estimate_(velocity, velocity_status, distance, heading_interpolate_3rd, enu_vel, position_parameter, position_status, enu_absolute_pos);
 }

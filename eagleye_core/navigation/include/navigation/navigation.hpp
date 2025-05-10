@@ -32,7 +32,6 @@
 #include <yaml-cpp/yaml.h>
 #include <Eigen/Dense>
 
-#include <boost/circular_buffer.hpp>
 #include <cmath>
 #include <numeric>
 

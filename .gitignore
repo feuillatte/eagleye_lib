@@ -10,3 +10,4 @@ bazel-bin
 bazel-out
 bazel-testlogs
 bazel-eagleye_lib
+*.swp

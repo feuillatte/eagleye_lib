@@ -28,8 +28,20 @@
  * Author MapIV Sekino
  */
 
+// This position estimator algorithm uses the ENU velocity estimate's timestamp
+// to determine the time point to which to estimate. Therefore, to predict forward,
+// an ENU velocity estimate with a timestmap in the future needs to be provided as input.
+
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
+
+// 3-dimensional pythagorean theorem to calculate 3-dimensional speed from the XYZ velocity vector
+static inline double hypotenuse_pyth3d(double leg_x, double leg_y, double leg_z) {
+  return std::sqrt(
+    (leg_x * leg_x) + (leg_y * leg_y) + (leg_z * leg_z)
+  );
+}
+
 
 void position_interpolate_estimate(Position enu_absolute_pos, Vector3Stamped enu_vel, Position gnss_smooth_pos,
   Height height, Heading heading,PositionInterpolateParameter position_interpolate_parameter, PositionInterpolateStatus* position_interpolate_status,
@@ -48,7 +60,7 @@ void position_interpolate_estimate(Position enu_absolute_pos, Vector3Stamped enu
   bool position_estimate_status;
   std::size_t imu_stamp_buffer_length;
 
-  double search_buffer_number = position_interpolate_parameter.sync_search_period * position_interpolate_parameter.imu_rate;
+  const double search_buffer_number = position_interpolate_parameter.sync_search_period * position_interpolate_parameter.imu_rate;
 
   enu_absolute_pos_interpolate->ecef_base_pos = enu_absolute_pos.ecef_base_pos;
 
@@ -61,7 +73,7 @@ void position_interpolate_estimate(Position enu_absolute_pos, Vector3Stamped enu
     position_interpolate_status->number_buffer = search_buffer_number;
   }
 
-  const double enu_absolute_time = enu_absolute_pos.header.stamp.tv_sec+ enu_absolute_pos.header.stamp.tv_nsec / 1e9;
+  const double enu_absolute_time = enu_absolute_pos.header.stamp.tv_sec + enu_absolute_pos.header.stamp.tv_nsec * 1e-9;
   if (position_interpolate_status->position_stamp_last != enu_absolute_time && enu_absolute_pos.status.estimate_status == true)
   {
     position_estimate_status = true;
@@ -73,9 +85,11 @@ void position_interpolate_estimate(Position enu_absolute_pos, Vector3Stamped enu
     position_estimate_status = false;
   }
 
-   const double enu_vel_time = enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9;
-  if(position_interpolate_status->time_last != 0 && std::sqrt((enu_vel.vector.x * enu_vel.vector.x) + (enu_vel.vector.y * enu_vel.vector.y) +
-    (enu_vel.vector.z * enu_vel.vector.z)) > position_interpolate_parameter.stop_judgement_threshold)
+  // Use the last ENU velocity's timestamp as the timestamp to estimate towards.
+  // To predict forward, the ENU velocity estimate needs to be timestamped in in the future
+  const double enu_vel_time = enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec / 1e9;
+  const double enu_3d_speed = hypotenuse_pyth3d(enu_vel.vector.x, enu_vel.vector.y, enu_vel.vector.z);
+  if(position_interpolate_status->time_last != 0 && enu_3d_speed > position_interpolate_parameter.stop_judgement_threshold)
   {
     position_interpolate_status->provisional_enu_pos_x = enu_absolute_pos_interpolate->enu_pos.x + enu_vel.vector.x *
       (enu_vel_time - position_interpolate_status->time_last);

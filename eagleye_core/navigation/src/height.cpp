@@ -28,6 +28,8 @@
  * Author MapIV  Takanose
  */
 
+// pitching_estimate() assumes RTK in its current state and so is not usable for other positioning types
+
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
@@ -48,7 +50,6 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
   bool gnss_status;
   bool data_status = false;
   int i;
-  int data_num = 0;
   int max_height_index;
   double A, B, C, D, E;
   double avg_height;
@@ -57,11 +58,9 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
   int data_num_acc = 0;
   double sum_acc = 0;
   double mean_acc = 0;
-  double pitch = 0;
   double correction_acceleration_linear_x = 0;
   std::size_t index_length;
   std::size_t velocity_index_length;
-  std::size_t distance_index_length;
   std::vector<double>::iterator max_height;
 
   int buffer_erase_count = 0;
@@ -71,27 +70,24 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
   double remain_data_ratio = enabled_data_ratio * height_parameter.outlier_ratio_threshold;
 
 /// GNSS FLAG ///
-  const double gga_time = gga.timestamp_ns / 1e9;
-  if (height_status->gga_time_last == gga_time)
-  {
+  const double gga_time_seconds = gga.timestamp_ns / 1e9;
+  if (height_status->gga_time_last == gga_time_seconds) {
     gnss_status = false;
     gnss_height = 0.0;
     gps_quality = 0;
-    height_status->gga_time_last = gga_time;
-  }
-  else
-  {
+    height_status->gga_time_last = gga_time_seconds;
+  } else {
     gnss_status = true;
     gnss_height = gga.position.alt_msl;
     gps_quality = 1U; // FIXME gga.gps_qual;
-    height_status->gga_time_last = gga_time;
+    height_status->gga_time_last = gga_time_seconds;
   }
 
   height_status->flag_reliability = false;
 
 ///  relative_height  ///
-  if (velocity.twist.linear.x > 0 && height_status->time_last != 0)
-  {
+  // If we have a positive forward speed and it's not the first execution cycle
+  if (velocity.twist.linear.x > 0 && height_status->time_last != 0) {
     height_status->relative_height_G += imu.linear_acceleration_mpss.x * velocity.twist.linear.x*
       (imu.timestamp_ns / 1e9-height_status->time_last)/g;
     height_status->relative_height_diffvel += - (velocity.twist.linear.x-height_status->correction_velocity_x_last) *
@@ -101,8 +97,8 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
   }
 
 ///  buffering  ///
-  if (distance.distance-height_status->distance_last >= height_parameter.update_distance && gnss_status == true && gps_quality == 4)
-  {
+  // If the last distance is greater than the configured update distance (?) and the GNSS measurement is valid and has type RTK
+  if (distance.distance-height_status->distance_last >= height_parameter.update_distance && gnss_status == true && gps_quality == 4) {
     height_status->height_buffer.push_back(gnss_height);
     height_status->relative_height_G_buffer.push_back(height_status->relative_height_G);
     height_status->relative_height_diffvel_buffer.push_back(height_status->relative_height_diffvel);
@@ -112,8 +108,7 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
     height_status->distance_buffer.push_back(distance.distance);
     data_status = true;
 
-    if (height_status->distance_buffer[height_status->data_number-1] - height_status->distance_buffer[0] > height_parameter.estimated_maximum_interval)
-    {
+    if (height_status->distance_buffer[height_status->data_number-1] - height_status->distance_buffer[0] > height_parameter.estimated_maximum_interval) {
       height_status->height_buffer.erase(height_status->height_buffer.begin());
       height_status->relative_height_G_buffer.erase(height_status->relative_height_G_buffer.begin());
       height_status->relative_height_diffvel_buffer.erase(height_status->relative_height_diffvel_buffer.begin());
@@ -126,12 +121,9 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
 
     height_status->data_number = height_status->distance_buffer.size();
 
-    if (height_status->distance_buffer[height_status->data_number-1]- height_status->distance_buffer[0] > height_parameter.estimated_minimum_interval)
-    {
+    if (height_status->distance_buffer[height_status->data_number-1]- height_status->distance_buffer[0] > height_parameter.estimated_minimum_interval) {
       height_status->estimate_start_status = true;
-    }
-    else
-    {
+    } else {
       height_status->estimate_start_status = false;
     }
 
@@ -142,21 +134,17 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
   height_status->data_number = height_status->distance_buffer.size();
 
 ///  acc_x error estimate   ///
-  if (height_status->estimate_start_status == true && gnss_status == true && data_status == true)
-  {
-
+  // If the RTK data condition was met
+  if (height_status->estimate_start_status == true && gnss_status == true && data_status == true) {
 ///  Explanation  ///
-
     A = 0.0;
     B = 0.0;
     C = 0.0;
     D = 0.0;
     E = 0.0;
 
-    if (height_status->acceleration_SF_estimate_status == true)
-    {
-      for (i = 0; i < height_status->data_number; i++)
-      {
+    if (height_status->acceleration_SF_estimate_status == true) {
+      for (i = 0; i < height_status->data_number; i++) {
         diff_height = height_status->height_buffer[i] - height_status->height_buffer[0];
         diff_relative_height_G = height_status->relative_height_G_buffer[i] - height_status->relative_height_G_buffer[0];
         diff_relative_height_diffvel = height_status->relative_height_diffvel_buffer[i] - height_status->relative_height_diffvel_buffer[0];
@@ -174,11 +162,8 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
       acc_x_offset->status.estimate_status = true;
       acc_x_scale_factor->status.enabled_status = true;
       acc_x_scale_factor->status.estimate_status = true;
-    }
-    else
-    {
-      for (i = 0; i < height_status->data_number; i++)
-      {
+    } else {
+      for (i = 0; i < height_status->data_number; i++) {
         diff_height = height_status->height_buffer[i] - height_status->height_buffer[0];
         diff_relative_height = (height_status->relative_height_G_buffer[i] + height_status->relative_height_diffvel_buffer[i])-
           (height_status->relative_height_G_buffer[0] + height_status->relative_height_diffvel_buffer[0]);
@@ -194,23 +179,20 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
       acc_x_scale_factor->status.estimate_status = false;
     }
 
-    for (i = 0; i < height_status->data_number; i++)
-    {
+    for (i = 0; i < height_status->data_number; i++) {
       height_status->correction_relative_height_buffer[i] = height_status->acceleration_SF_linear_x_last * height_status->relative_height_G_buffer[i] +
         height_status->relative_height_diffvel_buffer[i] + height_status->acceleration_offset_linear_x_last * height_status->relative_height_offset_buffer[i];
     }
   }
 
 ///  height estimate  ///
-  if (height_status->estimate_start_status == true)
-  {
+  if (height_status->estimate_start_status == true) {
     if (distance.distance > height_parameter.estimated_minimum_interval && gnss_status == true && gps_quality ==4 && data_status == true &&
       velocity.twist.linear.x > height_parameter.moving_judgement_threshold )
     {
       height_status->correction_relative_height_buffer2.clear();
       height_status->height_buffer2.clear();
-      for (i = 0; i < height_status->data_number; i++)
-      {
+      for (i = 0; i < height_status->data_number; i++) {
         height_status->correction_relative_height_buffer2.push_back(height_status->correction_relative_height_buffer[i]);
         height_status->height_buffer2.push_back(height_status->height_buffer[i]);
       }
@@ -219,14 +201,10 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
       std::vector<int> velocity_index;
       std::vector<int> index;
 
-      for (i = 0; i < height_status->data_number; i++)
-      {
-        if (height_status->distance_buffer[height_status->data_number-1] - height_status->distance_buffer[i]  <= height_parameter.estimated_minimum_interval)
-        {
+      for (i = 0; i < height_status->data_number; i++) {
+        if (height_status->distance_buffer[height_status->data_number-1] - height_status->distance_buffer[i]  <= height_parameter.estimated_minimum_interval) {
           distance_index.push_back(i);
-
-          if (height_status->correction_velocity_buffer[i] > height_parameter.moving_judgement_threshold)
-          {
+          if (height_status->correction_velocity_buffer[i] > height_parameter.moving_judgement_threshold) {
             velocity_index.push_back(i);
           }
         }
@@ -244,24 +222,19 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
       std::vector<double> diff_height_buffer2;
       std::vector<int> erase_number;
 
-      if (index_length > velocity_index_length * enabled_data_ratio)
-      {
-
-        while (1)
-        {
+      if (index_length > velocity_index_length * enabled_data_ratio) {
+        while (true) {
           index_length = std::distance(index.begin(), index.end());
           base_height_buffer.clear();
 
-          for (i = 0; i < height_status->data_number; i++)
-          {
+          for (i = 0; i < height_status->data_number; i++) {
             base_height_buffer.push_back(height_status->height_buffer2[index[index_length-1]] -
               height_status->correction_relative_height_buffer2[index[index_length-1]] + height_status->correction_relative_height_buffer2[i]);
           }
 
           diff_height_buffer2.clear();
 
-          for (i = 0; i < static_cast<int>(index_length); i++)
-          {
+          for (i = 0; i < static_cast<int>(index_length); i++) {
             diff_height_buffer2.push_back(base_height_buffer[index[i]] - height_status->height_buffer2[index[i]]);
           }
 
@@ -269,31 +242,25 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
           tmp_height = height_status->height_buffer2[index[index_length - 1]] - avg_height;
           base_height_buffer2.clear();
 
-          for (i = 0; i < height_status->data_number; i++)
-          {
+          for (i = 0; i < height_status->data_number; i++) {
             base_height_buffer2.push_back(tmp_height - height_status->correction_relative_height_buffer2[index[index_length - 1]] +
               height_status->correction_relative_height_buffer2[i]);
           }
 
           diff_height_buffer.clear();
 
-          for (i = 0; i < static_cast<int>(index_length); i++)
-          {
+          for (i = 0; i < static_cast<int>(index_length); i++) {
             diff_height_buffer.push_back(std::fabs(base_height_buffer2[index[i]] - height_status->height_buffer2[index[i]]));
           }
 
           max_height = std::max_element(diff_height_buffer.begin(), diff_height_buffer.end());
           max_height_index = std::distance(diff_height_buffer.begin(), max_height);
 
-          if (diff_height_buffer[max_height_index] > height_parameter.outlier_threshold)
-          {
-            if (height_status->height_estimate_start_status != true)
-            {
+          if (diff_height_buffer[max_height_index] > height_parameter.outlier_threshold) {
+            if (height_status->height_estimate_start_status != true) {
               erase_number.push_back(index[max_height_index]);
               buffer_erase_count =  buffer_erase_count + 1;
-            }
-            else if (index[max_height_index] == height_status->data_number-1)
-            {
+            } else if (index[max_height_index] == height_status->data_number-1) {
               height_status->height_buffer.erase(height_status->height_buffer.begin() + index[max_height_index]);
               height_status->relative_height_G_buffer.erase(height_status->relative_height_G_buffer.begin() + index[max_height_index]);
               height_status->relative_height_diffvel_buffer.erase(height_status->relative_height_diffvel_buffer.begin() + index[max_height_index]);
@@ -303,29 +270,21 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
               height_status->distance_buffer.erase(height_status->distance_buffer.begin() + index[max_height_index]);
             }
             index.erase(index.begin() + max_height_index);
-
-          }
-          else
-          {
+          } else {
             break;
           }
-
-
 
           index_length = std::distance(index.begin(), index.end());
           velocity_index_length = std::distance(velocity_index.begin(), velocity_index.end());
 
-          if (index_length < velocity_index_length * remain_data_ratio)
-          {
+          if (index_length < velocity_index_length * remain_data_ratio) {
             break;
           }
         }
 
-        if(height_status->height_estimate_start_status != true)
-        {
+        if(height_status->height_estimate_start_status != true) {
           std::sort(erase_number.begin(), erase_number.end(), std::greater<int>() );
-          for(i=0;i<buffer_erase_count;i++)
-          {
+          for(i=0;i<buffer_erase_count;i++) {
             height_status->height_buffer.erase(height_status->height_buffer.begin() + erase_number[i]);
             height_status->relative_height_G_buffer.erase(height_status->relative_height_G_buffer.begin() + erase_number[i]);
             height_status->relative_height_diffvel_buffer.erase(height_status->relative_height_diffvel_buffer.begin() + erase_number[i]);
@@ -337,23 +296,18 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
         }
 
 
-
         height_status->height_estimate_start_status = true;
 
         index_length = std::distance(index.begin(), index.end());
         velocity_index_length = std::distance(velocity_index.begin(), velocity_index.end());
 
-        if (index_length >= velocity_index_length * remain_data_ratio)
-        {
-          if (index[index_length - 1] == height_status->data_number-1)
-          {
+        if (index_length >= velocity_index_length * remain_data_ratio) {
+          if (index[index_length - 1] == height_status->data_number-1) {
             height_status->height_last = tmp_height;
             height->status.enabled_status = true;
             height->status.estimate_status = true;
             height_status->flag_reliability = true;
-          }
-          else
-          {
+          } else {
             height_status->height_last = tmp_height + (height_status->correction_relative_height_buffer2[height_status->data_number - 1]
               - height_status->correction_relative_height_buffer2[index[index_length - 1]]);
             height->status.enabled_status = true;
@@ -362,9 +316,7 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
           }
         }
       }
-    }
-    else
-    {
+    } else {
       height_status->height_last += ((imu.linear_acceleration_mpss.x * height_status->acceleration_SF_linear_x_last + height_status->acceleration_offset_linear_x_last)
       - (velocity.twist.linear.x-height_status->correction_velocity_x_last)/(imu.timestamp_ns / 1e9-height_status->time_last))
       * velocity.twist.linear.x*(imu.timestamp_ns / 1e9-height_status->time_last)/g;
@@ -378,37 +330,28 @@ void pitching_estimate(const ImuState imu,const GNSSState gga,const TwistStamped
   height_status->acc_buffer.push_back((velocity.twist.linear.x-height_status->correction_velocity_x_last)/(imu.timestamp_ns / 1e9-height_status->time_last) - correction_acceleration_linear_x);
   data_num_acc = height_status->acc_buffer.size();
 
-  if (data_num_acc > moving_average_buffer_number)
-  {
+  if (data_num_acc > moving_average_buffer_number) {
     height_status->acc_buffer.erase(height_status->acc_buffer.begin());
     data_num_acc--;
   }
 
-if (data_num_acc >= moving_average_buffer_number && height_status->estimate_start_status == true)
-  {
+if (data_num_acc >= moving_average_buffer_number && height_status->estimate_start_status == true) {
     sum_acc = 0;
-    for (i = 0; i < data_num_acc; i++)
-    {
+    for (i = 0; i < data_num_acc; i++) {
       sum_acc += height_status->acc_buffer[i];
     }
     mean_acc = sum_acc / data_num_acc;
 
-    if (std::abs(mean_acc/g) < 1)
-    {
+    if (std::abs(mean_acc/g) < 1) {
       tmp_pitch = std::asin(mean_acc/g);
       pitching->status.enabled_status = true;
       pitching->status.estimate_status = true;
-    }
-    else
-    {
+    } else {
       tmp_pitch = height_status->pitching_angle_last;
       pitching->status.enabled_status = false;
       pitching->status.estimate_status = true;
     }
-
-  }
-  else
-  {
+  } else {
     tmp_pitch = 0;
     pitching->status.enabled_status = false;
     pitching->status.estimate_status = false;
