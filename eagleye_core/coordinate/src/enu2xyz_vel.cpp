@@ -25,7 +25,6 @@
 
 #include "coordinate/coordinate.hpp"
 #include <GeographicLib/Geocentric.hpp>
-#include <eigen3/Eigen/StdVector>
 
 void enu2xyz_vel(double enu_vel[3], double ecef_base_pos[3], double xyz_vel[3])
 {
