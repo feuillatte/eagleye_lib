@@ -37,7 +37,7 @@ void velocity_scale_factor_estimate_(const TwistStamped velocity, const Velocity
   VelocityScaleFactorStatus* velocity_scale_factor_status, TwistStamped* correction_velocity, VelocityScaleFactor* velocity_scale_factor)
 { 
 
-  int i;
+  size_t i;
   double initial_velocity_scale_factor = 1.0;
   double raw_velocity_scale_factor = 0.0;
   std::size_t index_length;

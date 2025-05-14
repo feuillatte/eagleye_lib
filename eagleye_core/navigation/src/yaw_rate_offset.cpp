@@ -116,7 +116,7 @@ void yaw_rate_offset_estimate(const TwistStamped velocity, const YawRateOffset y
 
   if (estimated_condition_status)
   {
-    for (int i = 0; i < yaw_rate_offset_status->estimated_number; i++)
+    for (size_t i = 0; i < yaw_rate_offset_status->estimated_number; i++)
     {
       if (yaw_rate_offset_status->correction_velocity_buffer[i] > yaw_rate_offset_parameter.moving_judgement_threshold)
       {
@@ -137,7 +137,7 @@ void yaw_rate_offset_estimate(const TwistStamped velocity, const YawRateOffset y
     {
       std::vector<double> provisional_heading_angle_buffer(yaw_rate_offset_status->estimated_number, 0);
 
-      for (int i = 0; i < yaw_rate_offset_status->estimated_number; i++)
+      for (size_t i = 0; i < yaw_rate_offset_status->estimated_number; i++)
       {
         if (i > 0)
         {
@@ -153,7 +153,7 @@ void yaw_rate_offset_estimate(const TwistStamped velocity, const YawRateOffset y
 
       index_length = std::distance(index.begin(), index.end());
 
-      for (int i = 0; i < index_length; i++)
+      for (size_t i = 0; i < index_length; i++)
       {
         diff_buffer.push_back(yaw_rate_offset_status->heading_angle_buffer[index[index_length-1]] -
           provisional_heading_angle_buffer[index[index_length-1]] + provisional_heading_angle_buffer[index[i]] -
@@ -161,7 +161,7 @@ void yaw_rate_offset_estimate(const TwistStamped velocity, const YawRateOffset y
       }
 
       time_buffer2.clear();
-      for (int i = 0; i < index_length; i++)
+      for (size_t i = 0; i < index_length; i++)
       {
         time_buffer2.push_back(yaw_rate_offset_status->time_buffer[index[i]] - yaw_rate_offset_status->time_buffer[index[0]]);
       }
@@ -169,7 +169,7 @@ void yaw_rate_offset_estimate(const TwistStamped velocity, const YawRateOffset y
       // Least-square
       double sum_xy, sum_x, sum_y, sum_x2;
       sum_xy = 0.0, sum_x = 0.0, sum_y = 0.0, sum_x2 = 0.0;
-      for (int i = 0; i < index_length ; i++)
+      for (size_t i = 0; i < index_length ; i++)
       {
         sum_xy += time_buffer2[i] * diff_buffer[i];
         sum_x += time_buffer2[i];

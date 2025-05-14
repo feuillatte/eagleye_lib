@@ -26,6 +26,10 @@
 #ifndef NAVIGATION_H
 #define NAVIGATION_H
 
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+#define debug_print(fmt, ...) do { if (DEBUG) { fprintf(stderr, fmt, __VA_ARGS__); }} while (0)
 
 #include <cstdint>
 
@@ -221,7 +225,8 @@ struct VelocityScaleFactorStatus
   std::vector<bool> gnss_status_buffer;
   std::vector<double> doppler_velocity_buffer;
   std::vector<double> velocity_buffer;
-  int tow_last, estimated_number;
+  int tow_last;
+  size_t estimated_number;
   double rmc_time_last;
   double velocity_scale_factor_last;
   bool estimate_start_status;
@@ -263,9 +268,9 @@ struct YawrateOffsetParameter
 struct YawrateOffsetStatus
 {
   bool estimate_start_status;
-  int estimated_preparation_conditions;
-  int heading_estimate_status_count;
-  int estimated_number;
+  size_t estimated_preparation_conditions;
+  size_t heading_estimate_status_count;
+  size_t estimated_number;
   std::vector<double> time_buffer;
   std::vector<double> yaw_rate_buffer;
   std::vector<double> heading_angle_buffer;

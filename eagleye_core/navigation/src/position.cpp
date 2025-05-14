@@ -35,6 +35,11 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+#define debug_print(fmt, ...) do { if (DEBUG) { fprintf(stderr, fmt, __VA_ARGS__); }} while (0)
+
 // The original implementation of the coordinate system transformation using ROS tf below.
 // Replaced with Eigen to get rid of ROS dependencies
 //    tf::Quaternion q;
@@ -148,6 +153,7 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
 
   if (position_status->gnss_update_failure == false) {
     gnss_status = true;
+    debug_print("GNSS status is set to %s\n", gnss_status ? "ON" : "OFF");
     // We rotate the ENU position for some reason, using the true north map heading estimate
     const Eigen::Isometry3d rotated_position = rotatePosition(&enu_pos[0], heading_interpolate_3rd.heading_angle);
 
@@ -165,6 +171,7 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
         enu_pos[2] = unadjusted_position[2];
     }
   } else {
+    debug_print("GNSS status is set to %s\n", position_status->gnss_update_failure ? "True" : "False");
     gnss_status = false;
   }
 
@@ -172,11 +179,17 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
   if (heading_interpolate_3rd.status.estimate_status == true && velocity_status.status.enabled_status == true) {
     heading_interpolate_3rd.status.estimate_status = false; //in order to prevent this data frame from being evaluated more than once
     ++position_status->heading_estimate_status_count;
+    debug_print("interpolated heading status [ON], confidence level %d\n", position_status->heading_estimate_status_count);
+  } else {
+    debug_print("position_estimate_() Invalid data condition: heading interpolate [%s], velocity [%s]\n",
+        heading_interpolate_3rd.status.estimate_status ? "ON" : "OFF",
+        velocity_status.status.enabled_status ? "ON" : "OFF"
+    );
   }
 
   const double enu_velocity_timestamp_seconds{enu_vel.header.stamp.tv_sec + enu_vel.header.stamp.tv_nsec * 1e-9};
   const double position_update_delta_t_seconds{enu_velocity_timestamp_seconds - position_status->time_last};
-  if(position_status->time_last != 0) { // If this is not the first execution cycle, i.e. we have not stored a last timestamp
+  if(position_status->time_last < std::numeric_limits<double>::epsilon()) { // If this is not the first execution cycle, i.e. we have not stored a last timestamp
     // Update the relative position estimate with the XYZ speeds multiplied by the delta time between the last update timestamp and the ENU velocity input timestamp
     // This requires that the unit for the ENU velocities is meters per second
     position_status->enu_relative_pos_x = position_status->enu_relative_pos_x + enu_vel.vector.x * position_update_delta_t_seconds;
@@ -225,6 +238,7 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
 
   // If we flagged that we have new (valid) data
   if (data_status == true) {
+    debug_print("GNSS Data conditions met, estimating position...%s\n", "yay");
     // If we have moved a configured minimum interval, the GNSS measurement appears valid, the vehicle appears to be moving and we have
     // at least one input heading sample in the internal state, ...
     if (distance.distance > position_parameter.estimated_interval && gnss_status == true &&
@@ -385,6 +399,8 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
         }
       }
     }
+  } else {
+    debug_print("GNSS Data conditions failed (%s), no position estimate.\n", "err");
   }
   // Set the internal state last update time to the input ENU velocity timestamp
   position_status->time_last = enu_velocity_timestamp_seconds;
@@ -423,6 +439,11 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
         enu_absolute_pos->ecef_base_pos.z = position_parameter.ecef_base_pos_z;
       }
     }
+    debug_print("Set ECEF base position to x=%3.9f, y=%3.9f, z=%3.9f\n",
+        enu_absolute_pos->ecef_base_pos.x,
+        enu_absolute_pos->ecef_base_pos.y,
+        enu_absolute_pos->ecef_base_pos.z
+    );
   }
 
   // Convert the GNSS measurement ECEF to ENU, using whatever current ECEF origin values
@@ -433,6 +454,10 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
 
   // If the conversion result is numerically invalid, set the ENU position to zero
   if (!std::isfinite(enu_pos[0])||!std::isfinite(enu_pos[1])||!std::isfinite(enu_pos[2])) {
+    debug_print("ECEF to ENU conversion result failure: lat=%3.9f, lon=%3.9f\n",
+        enu_pos[0],
+        enu_pos[1]
+    );
     enu_pos[0] = 0.0;
     enu_pos[1] = 0.0;
     enu_pos[2] = 0.0;
@@ -445,7 +470,7 @@ void position_estimate(GNSSState gga,TwistStamped velocity,StatusStamped velocit
   // invalidate the ENU position and flag a GNSS update failure.
   const double gnss_update_timestamp_seconds{gga.timestamp_ns * 1e-9};
   if (position_status->nmea_time_last == gnss_update_timestamp_seconds || enu_vel.header.stamp.tv_sec == 0) {
-    std::fprintf(stderr," GNSS timestamp is seen before [%d] or ENU velocity stamp is zero [%d]. Flagging input data as invalid.\n",
+    debug_print(" GNSS timestamp is seen before [%d] or ENU velocity stamp is zero [%d]. Flagging input data as invalid.\n",
         (position_status->nmea_time_last == gnss_update_timestamp_seconds),
         enu_vel.header.stamp.tv_sec == 0);
     enu_pos[0] = 0.0;

@@ -89,8 +89,7 @@ void trajectory_estimate(const ImuState imu, const TwistStamped velocity,
   calculate_covariance(velocity, velocity_status, yaw_rate_offset_stop, trajectory_parameter, eagleye_twist_with_covariance);
 
   if (trajectory_status->estimate_status_count == 0 && velocity_status.status.enabled_status == true &&
-    heading_interpolate_3rd.status.enabled_status == true)
-  {
+    heading_interpolate_3rd.status.enabled_status == true) {
     trajectory_status->estimate_status_count = 1;
     trajectory_status->heading_last = heading_interpolate_3rd.heading_angle;
   } else if (trajectory_status->estimate_status_count == 1) {

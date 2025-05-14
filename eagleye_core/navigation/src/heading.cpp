@@ -28,8 +28,14 @@
  * Author MapIV Sekino
  */
 
+
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
+
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+#define debug_print(fmt, ...) do { if (DEBUG) { fprintf(stderr, fmt, __VA_ARGS__); }} while (0)
 
 void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate_offset_stop,
   YawRateOffset yaw_rate_offset,SlipAngle slip_angle,Heading heading_interpolate,HeadingParameter heading_parameter,
@@ -83,11 +89,11 @@ void heading_estimate_(ImuState imu,TwistStamped velocity,YawRateOffset yaw_rate
   std::vector<int> velocity_index;
   std::vector<int> index;
 
-//  std::printf("        heading_estimate_(): Sanity check | SampleCount [%s] | GnssStatus [%s] | MovingJudgement [%s] | CurveJudgement [%s]\n",
-//      (heading_status->estimated_number  > estimated_buffer_number_min) ? "Y" : "N",
-//      (heading_status->gnss_status_buffer[heading_status->estimated_number-1]) ? "Y" : "N",
-//      (heading_status->correction_velocity_buffer[heading_status->estimated_number -1] > heading_parameter.moving_judgement_threshold) ? "Y" : "N",
-//      (fabsf(heading_status->yaw_rate_buffer[heading_status->estimated_number -1]) < heading_parameter.curve_judgement_threshold) ? "Y" : "N");
+  debug_print("        heading_estimate_(): Sanity check | SampleCount [%s] | GnssStatus [%s] | MovingJudgement [%s] | CurveJudgement [%s]\n",
+      (heading_status->estimated_number  > estimated_buffer_number_min) ? "Y" : "N",
+      (heading_status->gnss_status_buffer[heading_status->estimated_number-1]) ? "Y" : "N",
+      (heading_status->correction_velocity_buffer[heading_status->estimated_number -1] > heading_parameter.moving_judgement_threshold) ? "Y" : "N",
+      (fabsf(heading_status->yaw_rate_buffer[heading_status->estimated_number -1]) < heading_parameter.curve_judgement_threshold) ? "Y" : "N");
 
   if (heading_status->estimated_number  > estimated_buffer_number_min
       && heading_status->gnss_status_buffer[heading_status->estimated_number -1] == true
@@ -257,7 +263,7 @@ void heading_estimate(const GNSSPVT nav_pvt, ImuState imu,TwistStamped velocity,
   const double pvt_time = nav_pvt.timestamp_ns / 1e9;
   if (heading_status->rmc_time_last == pvt_time || pvt_time == 0.0 || nav_pvt.track == 0.0)
   {
-    std::printf("        heading_estimate() gnss_status with time [%ld] and track [%3.1f] is invalid: Already Seen[%s] ZeroTime[%s] NoTrack[%s]\n",
+    debug_print("        heading_estimate() gnss_status with time [%ld] and track [%3.1f] is invalid: Already Seen[%s] ZeroTime[%s] NoTrack[%s]\n",
         nav_pvt.timestamp_ns,
         nav_pvt.track,
         (heading_status->rmc_time_last == pvt_time) ? "Y" : "N",

@@ -125,6 +125,8 @@ class EaglEyeLocalization {
     bool hasPlausibleHeight() const;
     bool hasPlausibleSlipAngle() const;
     bool hasPlausibleInterpolatedPosition() const;
+    bool hasPlausiblePitchAngle() const;
+    bool hasPlausibleAccelerationScaleFactor() const;
 
     GNSSState getGlobalPoseStateLLA();
 
@@ -143,6 +145,7 @@ class EaglEyeLocalization {
 
     bool has_new_imu_data_{false};
     bool has_new_wheelspeed_data_{false};
+    bool has_new_gnss_data_{false};
     bool vehicle_has_moved_{false};
 
     Heading estimated_heading_{};
@@ -153,12 +156,12 @@ class EaglEyeLocalization {
     HeadingInterpolateParameter heading_interpolate_parameter_{};
     HeadingInterpolateStatus heading_interpolate_status_{};
 
-    Position estimated_position_{};
+    Position estimated_position_local_{};
     PositionParameter position_parameter_{};
     PositionStatus position_status_{};
     PositionStatus estimated_position_status_{};
 
-    Position estimated_position_final_{};
+    Position estimated_position_predicted_{};
     PositionInterpolateParameter position_interpolate_parameter_{};
     PositionInterpolateStatus position_interpolate_status_{};
     GNSSPosition estimated_llh_{};

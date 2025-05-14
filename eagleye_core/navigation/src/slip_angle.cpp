@@ -36,8 +36,6 @@ void slip_angle_estimate(ImuState imu, TwistStamped velocity, StatusStamped velo
   SlipAngle* slip_angle)
 {
 
-  int i;
-  double doppler_slip;
   double yaw_rate;
   double acceleration_y;
 

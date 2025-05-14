@@ -158,7 +158,6 @@ std::string assert_resolved(const std::string& prefix, const std::string& frame_
 
 std::string tf::resolve(const std::string& prefix, const std::string& frame_name)
 {
-  //  printf ("resolveping prefix:%s with frame_name:%s\n", prefix.c_str(), frame_name.c_str());
   if (frame_name.size() > 0)
     if (frame_name[0] == '/')
     {
@@ -326,15 +325,9 @@ void Transformer::lookupTwist(const std::string& tracking_frame, const std::stri
   transformPoint(reference_frame, rp_desired, rp_desired);
   // compute the delta
   tf::Point delta = rp_desired - rp_orig;
-  // Correct for the change in reference point 
+  // Correct for the change in reference point
   out_vel = out_vel + out_rot * delta;
-  // out_rot unchanged   
-
-  /*
-    printf("KDL: Rotation %f %f %f, Translation:%f %f %f\n", 
-         out_rot.x(),out_rot.y(),out_rot.z(),
-         out_vel.x(),out_vel.y(),out_vel.z());
-  */   
+  // out_rot unchanged
 
   twist.linear.x =  out_vel.x();
   twist.linear.y =  out_vel.y();
