@@ -31,9 +31,9 @@
 #include "coordinate/coordinate.hpp"
 #include "navigation/navigation.hpp"
 
-void rtk_dead_reckoning_estimate_(geometry_msgs::Vector3Stamped enu_vel, nmea_msgs::Gpgga gga,  eagleye_msgs::Heading heading,
+void rtk_dead_reckoning_estimate_(Vector3Stamped enu_vel, nmea_msgs::Gpgga gga,  Heading heading,
   RtkDeadreckoningParameter rtk_dead_reckoning_parameter, RtkDeadreckoningStatus* rtk_dead_reckoning_status,
-  eagleye_msgs::Position* enu_absolute_rtk_dead_reckoning,sensor_msgs::NavSatFix* eagleye_fix)
+  Position* enu_absolute_rtk_dead_reckoning,sensor_msgs::NavSatFix* eagleye_fix)
 {
 
   double enu_pos[3],enu_rtk[3];
@@ -54,7 +54,7 @@ void rtk_dead_reckoning_estimate_(geometry_msgs::Vector3Stamped enu_vel, nmea_ms
     llh2xyz(llh_rtk,ecef_rtk);
     xyz2enu(ecef_rtk,ecef_base_pos,enu_rtk);
 
-    geometry_msgs::PoseStamped pose;
+    PoseStamped pose;
 
     pose.pose.position.x = enu_rtk[0];
     pose.pose.position.y = enu_rtk[1];
@@ -184,7 +184,7 @@ void rtk_dead_reckoning_estimate_(geometry_msgs::Vector3Stamped enu_vel, nmea_ms
   }
 }
 
-void rtk_dead_reckoning_estimate(rtklib_msgs::RtklibNav rtklib_nav,geometry_msgs::Vector3Stamped enu_vel, nmea_msgs::Gpgga gga,  eagleye_msgs::Heading heading, RtkDeadreckoningParameter rtk_dead_reckoning_parameter, RtkDeadreckoningStatus* rtk_dead_reckoning_status, eagleye_msgs::Position* enu_absolute_rtk_dead_reckoning,sensor_msgs::NavSatFix* eagleye_fix)
+void rtk_dead_reckoning_estimate(Position rtklib_nav,Vector3Stamped enu_vel, nmea_msgs::Gpgga gga,  Heading heading, RtkDeadreckoningParameter rtk_dead_reckoning_parameter, RtkDeadreckoningStatus* rtk_dead_reckoning_status, Position* enu_absolute_rtk_dead_reckoning,sensor_msgs::NavSatFix* eagleye_fix)
 {
   if(rtk_dead_reckoning_parameter.use_ecef_base_position)
   {
@@ -206,7 +206,7 @@ void rtk_dead_reckoning_estimate(rtklib_msgs::RtklibNav rtklib_nav,geometry_msgs
   rtk_dead_reckoning_estimate_(enu_vel, gga, heading, rtk_dead_reckoning_parameter, rtk_dead_reckoning_status, enu_absolute_rtk_dead_reckoning, eagleye_fix);
 }
 
-void rtk_dead_reckoning_estimate(geometry_msgs::Vector3Stamped enu_vel, nmea_msgs::Gpgga gga,  eagleye_msgs::Heading heading, RtkDeadreckoningParameter rtk_dead_reckoning_parameter, RtkDeadreckoningStatus* rtk_dead_reckoning_status, eagleye_msgs::Position* enu_absolute_rtk_dead_reckoning,sensor_msgs::NavSatFix* eagleye_fix)
+void rtk_dead_reckoning_estimate(Vector3Stamped enu_vel, nmea_msgs::Gpgga gga,  Heading heading, RtkDeadreckoningParameter rtk_dead_reckoning_parameter, RtkDeadreckoningStatus* rtk_dead_reckoning_status, Position* enu_absolute_rtk_dead_reckoning,sensor_msgs::NavSatFix* eagleye_fix)
 {
   double ecef_pos[3];
   double llh_pos[3];

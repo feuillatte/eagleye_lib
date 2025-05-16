@@ -155,11 +155,15 @@ void position_estimate_(TwistStamped velocity,StatusStamped velocity_status,Dist
     gnss_status = true;
     debug_print("GNSS status is set to %s\n", gnss_status ? "ON" : "OFF");
     // We rotate the ENU position for some reason, using the true north map heading estimate
+    debug_print("rotatePosition Input %4.9f, %4.9f %4.9f\n", enu_pos[0], enu_pos[1], enu_pos[2]);
     const Eigen::Isometry3d rotated_position = rotatePosition(&enu_pos[0], heading_interpolate_3rd.heading_angle);
+    const Eigen::Vector3d unadjusted_position = rotated_position.translation();
+    debug_print("rotatePosition Output %4.9f, %4.9f %4.9f\n", unadjusted_position[0], unadjusted_position[1], unadjusted_position[2]);
 
     // If we have an adjustment rotation magnitude greater than zero, or an adjustment translation greater than zero, apply that adjustment
     const double config_translation_magnitude = std::fabs(position_parameter.tf_gnss_translation_x) + std::fabs(position_parameter.tf_gnss_translation_y) + std::fabs(position_parameter.tf_gnss_translation_z);
     if (std::fabs(position_parameter.tf_gnss_rotation_w) > std::numeric_limits<double>::epsilon() || config_translation_magnitude > std::numeric_limits<double>::epsilon()) {
+        debug_print("Performing coordinate transformation of position!%s", "\n");
         const Eigen::Vector3d adjusted_position = applyAdjustmentTransformation(rotated_position, position_parameter);
         enu_pos[0] = adjusted_position[0];
         enu_pos[1] = adjusted_position[1];

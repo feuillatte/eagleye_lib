@@ -166,7 +166,7 @@ class EaglEyeLocalization {
     PositionInterpolateStatus position_interpolate_status_{};
     GNSSPosition estimated_llh_{};
 
-    Vector3Stamped enu_velocities_{};
+    Vector3Stamped enu_velocity_{};
 
     HeightParameter height_parameter_{};
     HeightStatus height_status_{};

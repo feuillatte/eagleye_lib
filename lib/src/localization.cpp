@@ -169,11 +169,12 @@ void EaglEyeLocalization::addImuMeasurement(const ImuState& imu) {
         &heading_interpolate_status_,
         &estimated_heading_interpolated_
     );
-    enu_velocities_.header.stamp = imu_timestamp;
+    enu_velocity_.header.stamp = imu_timestamp;
+
     Position PR = estimated_position_local_;
     PR.header.stamp = imu_timestamp;
 
-    Vector3Stamped EV = enu_velocities_;
+    Vector3Stamped EV = enu_velocity_;
     vehicle_kinematics_.header.stamp = imu_timestamp;
     trajectory3d_estimate(
         I,
@@ -192,16 +193,18 @@ void EaglEyeLocalization::addImuMeasurement(const ImuState& imu) {
     );
     // If the heading interpolation signal is valid, incorporate our position and velocity prediction
 //    if (estimated_heading_interpolated_.status.enabled_status) {
-        debug_print("trajectory3d_estimate position delta x[%5.9f] y[%5.9f] z[%5.9f]\n",
+        debug_print("trajectory3d_estimate | Position delta x[%5.14f] y[%5.14f] z[%5.14f], Position enabled [%s] | Position estimate status [%s] | Interpol heading [%s]\n",
             PR.enu_pos.x - estimated_position_local_.enu_pos.x,
             PR.enu_pos.y - estimated_position_local_.enu_pos.y,
-            PR.enu_pos.z - estimated_position_local_.enu_pos.z
+            PR.enu_pos.z - estimated_position_local_.enu_pos.z,
+            PR.status.enabled_status ? "Y" : "N",
+            PR.status.estimate_status ? "Y" : "N",
+            estimated_heading_interpolated_.status.enabled_status ? "Y" : "N"
         );
         estimated_position_local_.enu_pos = PR.enu_pos;
         estimated_position_local_.status.enabled_status = PR.status.enabled_status;
         estimated_position_local_.status.estimate_status = PR.status.estimate_status;
-        enu_velocities_.header.stamp = imu_timestamp;
-        enu_velocities_.vector = EV.vector;
+        enu_velocity_.vector = EV.vector;
 //    } else {
 //        debug_print("Trajectory estimator input heading status was invalid [%d]. Dropping estimated position and ENU velocity\n", estimated_heading_interpolated_.status.enabled_status);
 //    }
@@ -232,9 +235,11 @@ void EaglEyeLocalization::addGnssPvt(const PositionVelocityTimeSolution& PVT) {
         &estimated_heading_
     );
     last_pvt_ = P;
+
     GNSSState G;
     G.timestamp_ns = P.timestamp_ns;
     G.position = P.position;
+
     Vector3Stamped EV;
     EV.header.stamp.tv_sec = P.timestamp_ns / 1e9;
     EV.header.stamp.tv_nsec = P.timestamp_ns - EV.header.stamp.tv_sec * 1e9;
@@ -242,19 +247,21 @@ void EaglEyeLocalization::addGnssPvt(const PositionVelocityTimeSolution& PVT) {
     EV.vector.x = PVT.velocity_ned_ms.y;
     EV.vector.y = PVT.velocity_ned_ms.x;
     EV.vector.z = - PVT.velocity_ned_ms.z;  // Note the flip
-    enu_velocities_ = EV;
+    enu_velocity_ = EV;
+
     position_estimate(  // Updates estimated position
         G,
         vehicle_kinematics_,
         velocity_enable_status_,
         estimated_distance_,
         estimated_heading_,
-        EV,
+        enu_velocity_,
         position_parameter_,
         &position_status_,
         &estimated_position_local_
     );
-    estimated_position_local_.header = EV.header;
+    // estimated_position_local_.header.stamp = EV.header.stamp;
+    estimated_position_local_.header.stamp = enu_velocity_.header.stamp;
     last_gnss_ = G;
     has_new_gnss_data_ = true;
     debug_print("position status [%s]\n", estimated_position_local_.status.enabled_status ? "Y" : "N");
@@ -367,10 +374,14 @@ void EaglEyeLocalization::computeState() {
     }
     if (hasPlausiblePosition()) {
         // The below metadata copying is from position_interpolate_node.cpp
-        estimated_position_predicted_.header = enu_velocities_.header;
+        estimated_position_predicted_.header = enu_velocity_.header;
+        debug_print("    Feeding position_interpolate_estimate an ENU velocity with timestamp [%ld.%ld]\n",
+            enu_velocity_.header.stamp.tv_sec,
+            enu_velocity_.header.stamp.tv_nsec
+        );
         position_interpolate_estimate(
             estimated_position_local_,
-            enu_velocities_,
+            enu_velocity_,
             estimated_position_local_,   // should be Smoothed Position instead, only for height
             estimated_height_,
             estimated_heading_,
@@ -379,12 +390,20 @@ void EaglEyeLocalization::computeState() {
             &estimated_position_predicted_,
             &estimated_llh_
         );
-        debug_print("position_interpolate mode [%s] enabled [%s]\n", has_new_gnss_data_ ? "GNSS" : "DEADRECKONING", estimated_position_predicted_.status.enabled_status ? "Y" : "N");
+        debug_print("    position_interpolate mode [%s] enabled [%s]\n", has_new_gnss_data_ ? "GNSS" : "DEADRECKONING", estimated_position_predicted_.status.enabled_status ? "Y" : "N");
+        debug_print("    position_interpolate local [%4.9f][%4.9f][%4.9f]   predicted [%4.9f][%4.9f][%4.9f]\n",
+            estimated_position_local_.enu_pos.x,
+            estimated_position_local_.enu_pos.y,
+            estimated_position_local_.enu_pos.z,
+            estimated_position_predicted_.enu_pos.x,
+            estimated_position_predicted_.enu_pos.y,
+            estimated_position_predicted_.enu_pos.z
+        );
         has_new_gnss_data_ = false;
     } else {
-        debug_print("position interpolation not yet ready: no plausible position%s", "\n");
+        debug_print("    position interpolation not yet ready: no plausible position%s", "\n");
     }
-    debug_print("Done computing state.%s", "\n");
+    debug_print("Done computing state.%s", "\n\n");
 }
 
 void EaglEyeLocalization::resetRelativeMotionTrackingOrigin(const GNSSPosition& p) {
