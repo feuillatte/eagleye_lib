@@ -26,6 +26,8 @@
 #ifndef COORDINATE_H
 #define COORDINATE_H
 
+#include <cstdint>
+
 #include <GeographicLib/Constants.hpp>
 #include <GeographicLib/Geoid.hpp>
 #include <GeographicLib/MGRS.hpp>
