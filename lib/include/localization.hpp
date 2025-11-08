@@ -140,6 +140,8 @@ class EaglEyeLocalization {
 
     Vector3d getAttitude();
 
+    Vector3d getLocalPositionENU();
+
   private:
     EaglEyeParameters config_{};
 

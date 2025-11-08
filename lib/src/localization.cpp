@@ -454,3 +454,7 @@ Vector3d EaglEyeLocalization::getRelativePositionENU() {
 Vector3d EaglEyeLocalization::getRelativePositionOriginECEF() {
     return estimated_position_predicted_.ecef_base_pos;
 }
+
+Vector3d EaglEyeLocalization::getLocalPositionENU() {
+    return estimated_position_local_.enu_pos;
+}
