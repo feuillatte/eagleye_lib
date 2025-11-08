@@ -184,7 +184,6 @@ namespace angles
     }
 
 
-    //    printf("%f %f %f %f\n",delta_min,delta_min_2pi,delta_max,delta_max_2pi);
     if((delta_min <= delta_max_2pi) || (delta_max >= delta_min_2pi))
     {
       result_min_delta = delta_max_2pi;

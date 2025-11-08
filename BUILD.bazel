@@ -27,9 +27,6 @@ cc_library(
         "@yaml-cpp//:yaml-cpp",
         ":eagleye_core_coordinate",
     ],
-    copts = [
-       "-DDEBUG=1",
-    ],
 )
 
 cc_library(
@@ -73,9 +70,6 @@ cc_library(
     ],
     srcs = [
         "lib/src/localization.cpp",
-    ],
-    copts = [
-       "-DDEBUG=1",
     ],
     visibility = ["//visibility:public"],
 )
