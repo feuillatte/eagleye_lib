@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 2.8.3)
 project(eagleye_navigation)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
 
 find_package(Eigen3 QUIET)
 set(EIGEN3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
@@ -13,7 +12,6 @@ include_directories(
   include
   ${PROJECT_SOURCE_DIR}/include
   ${EIGEN3_INCLUDE_DIRS}
-  ${YAML_CPP_INCLUDE_DIRS}
 )
 
 add_library(eagleye_navigation
@@ -31,11 +29,8 @@ add_library(eagleye_navigation
   src/position_interpolate.cpp
   src/height.cpp
   src/angular_velocity_offset_stop.cpp
-  #src/rtk_dead_reckoning.cpp
-  # src/rtk_heading.cpp
-#  src/enable_additional_rolling.cpp
   src/rolling.cpp
-#  src/velocity_estimator.cpp
+  # src/velocity_estimator.cpp
 )
 
 target_include_directories(
@@ -45,7 +40,6 @@ target_include_directories(
 )
 
 target_link_libraries(eagleye_navigation
-  ${YAML_CPP_LIBRARIES}
   eagleye_coordinate
 )
 add_dependencies(eagleye_navigation eagleye_coordinate)

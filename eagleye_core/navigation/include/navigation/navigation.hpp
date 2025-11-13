@@ -33,7 +33,6 @@
 
 #include <cstdint>
 
-#include <yaml-cpp/yaml.h>
 #include <Eigen/Dense>
 
 #include <cmath>
@@ -695,9 +694,6 @@ class VelocityEstimator
   public:
     VelocityEstimator();
 
-    // Parameter setting
-    void setParam(std::string yaml_file);
-
     // Main estimate function
     void VelocityEstimate(const ImuState, const GNSSState, TwistStamped*);
 
@@ -710,7 +706,6 @@ class VelocityEstimator
       public:
         PitchrateOffsetStopEstimator();
 
-        void setParam(std::string yaml_file);
         bool PitchrateOffsetStopEstimate(double pitchrate, double stop_status);
 
         double pitchrate_offset;
@@ -734,7 +729,6 @@ class VelocityEstimator
       public:
         PitchingEstimator();
 
-        void setParam(std::string yaml_file);
         bool PitchingEstimate(double imu_time_last, double doppler_velocity, double rtkfix_velocity,
                               double pitchrate, double pitchrate_offset, double rtkfix_pitching,
                               bool navsat_update_status, bool stop_status);
@@ -771,7 +765,6 @@ class VelocityEstimator
       public:
         AccelerationOffsetEstimator();
 
-        void setParam(std::string yaml_file);
         bool AccelerationOffsetEstimate(double imu_time_last, double rtkfix_velocity, double pitching,
                               double acceleration, bool navsat_update_status);
 

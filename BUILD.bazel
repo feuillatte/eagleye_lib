@@ -24,7 +24,6 @@ cc_library(
     ],
     deps = [
         "@eigen//:eigen",
-        "@yaml-cpp//:yaml-cpp",
         ":eagleye_core_coordinate",
     ],
 )

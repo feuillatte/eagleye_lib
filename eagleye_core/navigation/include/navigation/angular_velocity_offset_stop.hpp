@@ -31,33 +31,11 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
-#include <yaml-cpp/yaml.h>
-
-
 struct AngularVelocityOffsetStopParameter
 {
   size_t buffer_size;
   double velocity_stop_judgement_threshold;
   double angular_stop_judgement_threshold;
-
-  void load(const std::string& yaml_file)
-  {
-    try
-    {
-      YAML::Node conf = YAML::LoadFile(yaml_file);
-
-      double imu_rate = conf["common"]["imu_rate"].as<double>();
-      double estimated_interval = conf["angular_velocity_offset_stop"]["estimated_interval"].as<double>();
-      this->buffer_size = imu_rate * estimated_interval;
-      this->velocity_stop_judgement_threshold = conf["common"]["stop_judgement_threshold"].as<double>();
-      this->angular_stop_judgement_threshold = conf["angular_velocity_offset_stop"]["outlier_threshold"].as<double>();
-    }
-    catch (YAML::Exception& e)
-    {
-      std::cerr << "\033[1;31mAngularVelocityOffsetStopParameter YAML Error: " << e.msg << "\033[m" << std::endl;
-      exit(3);
-    }
-  }
 };
 
 struct AngularVelocityOffsetStopStatus
